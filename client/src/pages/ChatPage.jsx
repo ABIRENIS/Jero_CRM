@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-
 import { Send, ArrowLeft, Paperclip, X, FileText, Download, Eye } from 'lucide-react';
 import '../styles/Chat.css';
 
@@ -9,16 +8,14 @@ const ChatPage = ({ socket, clearUnread }) => {
   const navigate = useNavigate();
   const { engineer } = location.state || {}; 
   
-  // Debugging: Dashboard-la irundhu enna data varudhu nu check panna
-  console.log('Engineer object received:', engineer);
+  // API URL logic
+  const API_BASE_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:5000";
   
   const [message, setMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
   const scrollRef = useRef();
   const fileInputRef = useRef();
-
-  // Optimized Reference for clearing unread status
   const engineerIdRef = useRef(engineer?.id);
 
   useEffect(() => {
@@ -28,23 +25,22 @@ const ChatPage = ({ socket, clearUnread }) => {
     }
   }, [engineer?.id, clearUnread]);
 
+  // --- 1. UPDATED: Load History from Production URL ---
   useEffect(() => {
     if (engineer && socket) {
       socket.emit("join_chat", engineer.id);
-      fetch(`http://localhost:5000/api/chat/${engineer.id}`)
+      fetch(`${API_BASE_URL}/api/chat/${engineer.id}`)
         .then(res => res.json())
         .then(data => setChatHistory(data)) 
         .catch(err => console.error("Error loading history:", err));
     }
-  }, [engineer, socket]);
+  }, [engineer, socket, API_BASE_URL]);
 
-useEffect(() => {
+  useEffect(() => {
     if (!socket) return;
 
     const handleReceiveMessage = (data) => {
-      // Logic: Only add if message is NOT already there (by checking timestamp or content)
       setChatHistory((prev) => {
-        // Double check for same message (Optional Safety)
         const isDuplicate = prev.some(msg => 
           msg.created_at === data.created_at && msg.message_text === data.message_text
         );
@@ -70,6 +66,7 @@ useEffect(() => {
     if (file) setSelectedFile(file);
   };
 
+  // --- 2. UPDATED: Download logic handles CORS from Render ---
   const downloadFile = async (url, fileName) => {
     try {
       const response = await fetch(url);
@@ -87,7 +84,8 @@ useEffect(() => {
     }
   };
 
-const sendMessage = async (e) => {
+  // --- 3. UPDATED: Upload to Production URL ---
+  const sendMessage = async (e) => {
     e.preventDefault();
     if ((message.trim() !== "" || selectedFile) && engineer && socket) {
       let uploadedFile = null;
@@ -95,7 +93,7 @@ const sendMessage = async (e) => {
         const formData = new FormData();
         formData.append('file', selectedFile);
         try {
-          const res = await fetch('http://localhost:5000/api/upload', {
+          const res = await fetch(`${API_BASE_URL}/api/upload`, {
             method: 'POST',
             body: formData,
           });
@@ -116,11 +114,7 @@ const sendMessage = async (e) => {
         created_at: new Date().toISOString()
       };
 
-      // 1. Send to socket - Backend thirumba 'receive_message' moolama response anuppum
       socket.emit("send_message", messageData);
-
-      // 2. !!! REMOVED setChatHistory logic from here !!!
-      
       setMessage("");
       setSelectedFile(null);
     }
@@ -135,8 +129,6 @@ const sendMessage = async (e) => {
 
   if (!engineer) return <div className="p-20">No engineer selected.</div>;
 
-  // --- IMPROVED FALLBACK LOGIC ---
-  // Dashboard popup-la irundhu vara keys-ah accurate-ah check pannuvom
   const displayName = engineer.name || 'Engineer';
   const displayId = engineer.engineer_id || engineer.id || 'N/A';
   const displayStatus = engineer.status || 'Online';
@@ -161,7 +153,6 @@ const sendMessage = async (e) => {
           <div className="chat-messages-area">
             {chatHistory.map((msg, index) => {
               const isSentByMe = msg.sender_type === 'admin';
-
               return (
                 <div key={index} className={`message-wrapper ${isSentByMe ? 'sent' : 'received'}`}>
                   <div className="message-bubble">
