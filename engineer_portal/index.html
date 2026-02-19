@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jerobyte Login</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="chat.js" defer></script>
+</head>
+<body>
+    <div class="app-wrapper">
+        <div class="login-container">
+            <h1>JEROBYTE</h1>
+            <div class="input-group">
+                <input type="email" id="engineer_email" class="input-field" placeholder="Email Address">
+            </div>
+            <div class="input-group">
+                <input type="password" id="engineer_password" class="input-field" placeholder="Password">
+            </div>
+            
+            <button class="btn btn-green" onclick="handleLogin()">LOGIN</button>
+            
+            <a href="#" class="forgot-pw">Forgot?</a>
+        </div>
+    </div>
+
+    <script>
+        // Check if already logged in when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentEngineer = localStorage.getItem('engineerData');
+            if (currentEngineer) {
+                // If data exists, go straight to dashboard
+                window.location.href = 'dashboard.html';
+            }
+        });
+
+        function handleLogin() {
+            const email = document.getElementById('engineer_email').value;
+            const pass = document.getElementById('engineer_password').value;
+            
+            if(!email || !pass) {
+                alert("Please fill all fields");
+                return;
+            }
+
+            // chat.js-la namma sariya ezhudhuna loginEngineer call aagum
+            // Idhu backend-ku signal anuppi status-ah 'Online' mathum
+            loginEngineer(email, pass);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+:root {
+    --jerobyte-blue: #1b4e8c;
+    --success-green: #49b563;
+    --white: #ffffff;
+    --bg-gray: #f0f2f5;
+    --text-dark: #333;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    background-color: var(--bg-gray);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+/* Main Container */
+.app-wrapper {
+    width: 100%;
+    max-width: 450px; /* Mobile View look */
+    background: var(--white);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+/* LOGIN SCREEN STYLES */
+.login-container {
+    background-color: var(--jerobyte-blue);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 40px 30px;
+    text-align: center;
+}
+
+.login-container h1 {
+    color: var(--white);
+    font-size: 2.5rem;
+    margin-bottom: 40px;
+    letter-spacing: 3px;
+}
+
+.input-group {
+    margin-bottom: 20px;
+}
+
+.input-field {
+    width: 100%;
+    padding: 15px;
+    border-radius: 8px;
+    border: none;
+    font-size: 1rem;
+    outline: none;
+}
+
+/* DASHBOARD STYLES */
+.header {
+    background-color: var(--jerobyte-blue);
+    color: var(--white);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.content-area {
+    padding: 25px;
+    flex: 1;
+}
+
+.content-area h2 {
+    margin-bottom: 20px;
+    color: var(--text-dark);
+}
+
+.upload-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 25px;
+}
+
+/* BUTTONS */
+.btn {
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, opacity 0.2s;
+}
+
+.btn:active { transform: scale(0.98); }
+
+.btn-blue { background-color: var(--jerobyte-blue); color: var(--white); }
+.btn-green { background-color: var(--success-green); color: var(--white); margin-top: 15px; font-size: 1.1rem; }
+
+textarea {
+    width: 100%;
+    height: 120px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    resize: none;
+    font-size: 1rem;
+}
+
+.forgot-pw {
+    color: rgba(255,255,255,0.8);
+    margin-top: 20px;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+/* Previous styles integrated */
+.info-banner {
+    background: #e3f2fd;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: #0d47a1;
+    margin-bottom: 15px;
+    border-left: 4px solid #1b4e8c;
+}
+
+.chat-display {
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    height: 350px;
+    padding: 15px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 15px;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.msg small { font-weight: bold; display: block; margin-bottom: 4px; font-size: 0.75rem; }
+
+.executive {
+    background: #f0f0f0;
+    color: #333;
+    align-self: flex-start;
+    border-bottom-left-radius: 2px;
+}
+
+.engineer-msg-style {
+    background: #1b4e8c;
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 2px;
+}
+
+/* File link style in chat */
+.doc-link {
+    color: #1b4e8c;
+    text-decoration: underline;
+    font-weight: bold;
+    display: block;
+    margin-top: 5px;
+}

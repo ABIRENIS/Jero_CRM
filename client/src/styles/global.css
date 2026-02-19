@@ -1,0 +1,31 @@
+/* 1. Basic Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box; /* Ensures padding doesn't affect element width */
+}
+
+/* 2. Full Height for Layout */
+html, body, #root, .App {
+  height: 100%;
+  width: 100%;
+}
+
+/* 3. Typography & Smoothness */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f8fafc; /* Matches the light grey background in your image */
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 4. Button & Input Resets */
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input {
+  font-family: inherit;
+}
