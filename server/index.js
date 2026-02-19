@@ -7,12 +7,28 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const cron = require('node-cron');
+require('dotenv').config(); // Load environment variables
 
 const app = express();
 const server = http.createServer(app);
 
 // --- 1. MIDDLEWARE ---
-app.use(cors()); 
+// Updated CORS for production (allows local testing + Vercel)
+const allowedOrigins = [
+    process.env.CLIENT_URL, 
+    process.env.PORTAL_URL, 
+    "http://localhost:3000"
+];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    }
+}));
 app.use(express.json());
 
 // --- 2. FILE STORAGE SETUP ---
@@ -34,12 +50,21 @@ app.use('/uploads', express.static(uploadDir));
 // --- 3. SOCKET.IO SETUP ---
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: "*", // For sockets, strictly limiting origins is safer in next phase
         methods: ["GET", "POST"]
     }
 });
 
-// --- 4. HELPER FUNCTION: Broadcast Real-time Stats ---
+// --- 4. ROOT ROUTE (FIXES "CANNOT GET /") ---
+app.get('/', (req, res) => {
+    res.json({
+        status: "Live",
+        message: "Jerobyte CRM Server is running successfully.",
+        timestamp: new Date()
+    });
+});
+
+// --- 5. HELPER FUNCTION: Broadcast Real-time Stats ---
 const broadcastStats = async () => {
     try {
         const query = `
@@ -72,7 +97,7 @@ const broadcastStats = async () => {
     }
 };
 
-// --- 5. CRON JOB ---
+// --- 6. CRON JOB ---
 cron.schedule('0 0 * * *', async () => {
     try {
         await pool.query("DELETE FROM chat_messages WHERE created_at < NOW() - INTERVAL '30 days'");
@@ -82,16 +107,13 @@ cron.schedule('0 0 * * *', async () => {
     }
 });
 
-// --- 6. API ROUTES ---
+// --- 7. API ROUTES ---
 
-// A. ADD ENGINEER (Optimized Sequential Logic)
+// A. ADD ENGINEER
 app.post('/api/engineers/add', async (req, res) => {
     const { name, group_type, email, password, phone } = req.body;
-    
     try {
         const prefix = `ENG-${group_type.toUpperCase()}`;
-        
-        // 1. Intha query department prefix-la ulla periya number-ah mattum edukkum
         const lastEng = await pool.query(
             `SELECT engineer_id FROM engineers 
              WHERE engineer_id LIKE $1 
@@ -99,30 +121,22 @@ app.post('/api/engineers/add', async (req, res) => {
              LIMIT 1`,
             [`${prefix}-%`]
         );
-        
         let newId = `${prefix}-001`;
-
         if (lastEng.rows.length > 0) {
-            const lastIdStr = lastEng.rows[0].engineer_id;
-            const parts = lastIdStr.split('-');
+            const parts = lastEng.rows[0].engineer_id.split('-');
             const lastNum = parseInt(parts[2]);
-            
             if (!isNaN(lastNum)) {
                 newId = `${prefix}-${String(lastNum + 1).padStart(3, '0')}`;
             }
         }
-
-        // 2. Insert query - Phone and Series ID correctly mapped
         const query = `
             INSERT INTO engineers (name, engineer_id, group_type, email, password, phone, status) 
             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
         `;
         const result = await pool.query(query, [name, newId, group_type.toLowerCase(), email, password, phone, 'Offline']);
-        
         broadcastStats(); 
         res.json({ success: true, engineer: result.rows[0] });
     } catch (err) {
-        console.error("Add Error Detail:", err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -135,7 +149,6 @@ app.post('/api/engineer/login', async (req, res) => {
             "SELECT id, name, engineer_id, group_type, email FROM engineers WHERE email = $1 AND password = $2",
             [email, password]
         );
-
         if (result.rows.length > 0) {
             const engineer = result.rows[0];
             await pool.query("UPDATE engineers SET status = 'Online' WHERE id = $1", [engineer.id]);
@@ -163,10 +176,13 @@ app.post('/api/engineer/logout', async (req, res) => {
     }
 });
 
-// D. OTHER APIS
+// D. UPLOAD API (Updated to dynamic host)
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-    const fileUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+    // Use the request host so it works on both localhost and Render
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     res.json({ url: fileUrl, name: req.file.originalname, type: req.file.mimetype });
 });
 
@@ -215,7 +231,7 @@ app.get('/api/engineers/:groupType', async (req, res) => {
     }
 });
 
-// --- 7. REAL-TIME LOGIC ---
+// --- 8. REAL-TIME LOGIC ---
 const connectedEngineers = new Map();
 
 io.on('connection', (socket) => {
@@ -260,5 +276,8 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = 5000;
-server.listen(PORT, () => console.log(`Jerobyte Server running on port ${PORT}`));
+// --- 9. SERVER LISTEN (RENDER COMPATIBLE) ---
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Jerobyte Server running on port ${PORT}`);
+});
