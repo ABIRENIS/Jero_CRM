@@ -10,8 +10,12 @@ import ChatPage from './pages/ChatPage';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 
-// Socket connection - Backend URL-ah sariyaa check pannikonga
-const socket = io.connect("http://localhost:5000");
+// --- UPDATED: Socket connection ---
+// Vercel-la set panna REACT_APP_SERVER_URL-ah use pannum, illana localhost-ku pogum.
+const SOCKET_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:5000";
+const socket = io(SOCKET_URL, {
+  transports: ['websocket', 'polling'] // Better stability for production
+});
 
 function App() {
   const [showToast, setShowToast] = useState(null);
@@ -19,7 +23,6 @@ function App() {
   const location = useLocation();
 
   // --- 1. STATE & PERSISTENCE ---
-  // Unread messages irukkira engineers-oda ID-kalai inga store pannuvom
   const [unreadStatus, setUnreadStatus] = useState(() => {
     try {
       const saved = localStorage.getItem('jerobyte_unread_status');
@@ -29,7 +32,6 @@ function App() {
     }
   });
 
-  // LocalStorage update logic
   useEffect(() => {
     localStorage.setItem('jerobyte_unread_status', JSON.stringify(unreadStatus));
   }, [unreadStatus]);
@@ -37,14 +39,10 @@ function App() {
   // --- 2. GLOBAL SOCKET LISTENER ---
   useEffect(() => {
     const handleGlobalMessage = (data) => {
-      // Admin anuppura message-ku notification thevai illai
       if (data.sender_type !== 'admin') {
-        
-        // Notification Toast-kaana data-vai set pannuvom
         setShowToast({
           message: `New message from ${data.sender}`,
           engineerId: data.engineer_db_id,
-          // ChatPage header-ku thevaiyaana full object
           engineer: {
             id: data.engineer_db_id,
             name: data.sender,
@@ -54,11 +52,9 @@ function App() {
           }
         });
         
-        // 5 seconds-kku apram toast-ah maraikka
         setTimeout(() => setShowToast(null), 5000);
 
         // --- 3. UNREAD LOGIC ---
-        // User ippo andha engineer-oda chat-kulla illana mattum red dot kaattuvom
         const currentChatPath = `/chat/${data.engineer_db_id}`;
         if (location.pathname !== currentChatPath) {
           setUnreadStatus(prev => ({
@@ -73,17 +69,15 @@ function App() {
     return () => socket.off("receive_message", handleGlobalMessage);
   }, [location.pathname]);
 
-  // Red dot-ah remove panna intha function-ah ChatPage-ku anupuvom
   const clearUnread = (id) => {
     setUnreadStatus(prev => {
-      if (!prev[id]) return prev; // Adhu munaadiye illana state update panna thevai illai
+      if (!prev[id]) return prev; 
       const newStatus = { ...prev };
       delete newStatus[id];
       return newStatus;
     });
   };
 
-  // Toast-ah click panna chat page-ku state-oda kooti pogum
   const handleToastClick = () => {
     if (showToast) {
       navigate(`/chat/${showToast.engineerId}`, { 
@@ -93,18 +87,15 @@ function App() {
     }
   };
 
-  // Check if ANY engineer has an unread message for Sidebar indicator
   const hasAnyUnread = Object.keys(unreadStatus).length > 0;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', width: '100vw', overflow: 'hidden' }}>
       
-      {/* 1. GLOBAL SIDEBAR: Indha setup-ala dhaan dot Dashboard-layum thiriyum */}
       <Sidebar unreadCount={hasAnyUnread ? 1 : 0} />
 
       <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', background: '#f8f9fa' }}>
         
-        {/* 2. GLOBAL CLICKABLE TOAST */}
         {showToast && (
           <div 
             onClick={handleToastClick}
@@ -115,8 +106,7 @@ function App() {
               padding: '15px 25px', borderRadius: '8px', zIndex: 10000,
               boxShadow: '0 5px 15px rgba(0,0,0,0.3)', fontWeight: 'bold',
               borderLeft: '5px solid #28a745', cursor: 'pointer',
-              display: 'flex', flexDirection: 'column', gap: '5px',
-              animation: 'slideIn 0.3s ease-out'
+              display: 'flex', flexDirection: 'column', gap: '5px'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -128,16 +118,12 @@ function App() {
           </div>
         )}
 
-        {/* 3. MAIN CONTENT AREA (ROUTES) */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <Routes>
-            {/* Dashboard-ku 'unreadStatus' object-ah pass pannuroam counts-kaaga */}
             <Route path="/" element={<Dashboard unreadStatus={unreadStatus} />} />
-            
             <Route path="/groups" element={<Groups unread={unreadStatus} />} />
             <Route path="/groups/:type" element={<Groups unread={unreadStatus} />} />
             <Route path="/AddEngineer" element={<AddEngineer />} />
-            {/* ChatPage-ku socket matrum clear function anupuroam */}
             <Route path="/chat/:id" element={<ChatPage socket={socket} clearUnread={clearUnread} />} />
           </Routes>
         </div>
