@@ -17,6 +17,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
     process.env.CLIENT_URL, 
     process.env.PORTAL_URL, 
+    jerobyte-crm-exe.vercel.app,
     "http://localhost:3000"
 ];
 
