@@ -5,7 +5,9 @@ import { ArrowLeft, UserPlus } from 'lucide-react';
 const AddEngineer = () => {
     const navigate = useNavigate();
     
-    // Database column 'phone' kooda match panna 'phone' field sethurukkaen
+    // API URL logic - Environment variable check
+    const API_BASE_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:5000";
+
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -17,8 +19,10 @@ const AddEngineer = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            console.log("Submitting data:", formData);
-            const response = await fetch('http://localhost:5000/api/engineers/add', {
+            console.log("Submitting data to:", API_BASE_URL);
+            
+            // --- UPDATED: URL replaced with API_BASE_URL ---
+            const response = await fetch(`${API_BASE_URL}/api/engineers/add`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
@@ -27,7 +31,6 @@ const AddEngineer = () => {
             const data = await response.json();
 
             if (data.success) {
-                // Success alert-la automatic-ah generate aana Series ID kaattum
                 alert(`Success! Engineer Created: ${data.engineer.engineer_id}`);
                 navigate('/groups'); 
             } else {
@@ -35,7 +38,7 @@ const AddEngineer = () => {
             }
         } catch (err) {
             console.error("Fetch Error:", err);
-            alert("Network Error: Backend connection check pannunga!");
+            alert("Network Error: Backend connection check pannunga! Make sure your Render server is awake.");
         }
     };
 
@@ -75,7 +78,6 @@ const AddEngineer = () => {
                         />
                     </div>
 
-                    {/* NEW PHONE NUMBER FIELD */}
                     <div style={fieldWrapper}>
                         <label style={labelStyle}>Phone Number</label>
                         <input 
@@ -124,7 +126,6 @@ const AddEngineer = () => {
     );
 };
 
-// Styles toolkit
 const fieldWrapper = { marginBottom: '20px' };
 const labelStyle = { display: 'block', fontWeight: '600', marginBottom: '8px', color: '#333' };
 const inputStyle = { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #9ee5fe', outline: 'none', fontSize: '1rem', boxSizing: 'border-box' };
