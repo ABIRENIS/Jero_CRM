@@ -3,10 +3,6 @@ import '../styles/Groups.css';
 import { Monitor, Laptop, Camera, ChevronRight, ArrowLeft, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
-import AddEngineer from './AddEngineer';
-
-// Component-ku veliya socket connection, to prevent multiple connections on re-render
-const socket = io.connect("http://localhost:5000");
 
 const Groups = ({ unread = {} }) => {
   const navigate = useNavigate();
@@ -14,6 +10,9 @@ const Groups = ({ unread = {} }) => {
   const [engineers, setEngineers] = useState([]);
   const [loading, setLoading] = useState(false);
   
+  // --- UPDATED: Environment Variable ---
+  const API_BASE_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:5000";
+
   const [groupStats, setGroupStats] = useState({
     ups: { total: 0, online: 0 },
     lan: { total: 0, online: 0 },
@@ -22,7 +21,7 @@ const Groups = ({ unread = {} }) => {
 
   // --- 1. INITIAL FETCH ---
   useEffect(() => {
-    fetch('http://localhost:5000/api/engineers/stats') 
+    fetch(`${API_BASE_URL}/api/engineers/stats`) 
       .then(res => res.json())
       .then(data => {
         if (data && typeof data === 'object') {
@@ -30,23 +29,19 @@ const Groups = ({ unread = {} }) => {
         }
       })
       .catch(err => console.error("Error fetching stats:", err));
-  }, []);
+  }, [API_BASE_URL]);
 
   // --- 2. REAL-TIME SOCKET LISTENERS ---
   useEffect(() => {
-    // A. Update Group Card Counts (UPS/LAN/CCTV)
+    const socket = io(API_BASE_URL);
+
     const handleStatsUpdate = (newStats) => {
-      console.log("Real-time stats update received:", newStats);
       setGroupStats(newStats);
     };
 
-    // B. Update Individual Table Rows (Online/Offline status)
     const handleStatusChange = (data) => {
-      console.log("Status change received for Engineer:", data);
-      
       setEngineers(prevEngineers => 
         prevEngineers.map(eng => 
-          // Database-la irundhu vara ID string-ah irukkalaam, so == use pannuvoam
           eng.id == data.id ? { ...eng, status: data.status } : eng
         )
       );
@@ -58,22 +53,26 @@ const Groups = ({ unread = {} }) => {
     return () => {
       socket.off('update_group_stats', handleStatsUpdate);
       socket.off('status_changed', handleStatusChange);
+      socket.disconnect(); // Clean up connection
     };
-  }, []);
+  }, [API_BASE_URL]);
 
   // --- 3. FETCH GROUP LIST ---
   useEffect(() => {
     if (selectedGroup) {
       setLoading(true);
-      fetch(`http://localhost:5000/api/engineers/${selectedGroup}`)
+      fetch(`${API_BASE_URL}/api/engineers/${selectedGroup}`)
         .then(res => res.json())
         .then(data => {
           setEngineers(data);
           setLoading(false);
         })
-        .catch(err => console.error("Error fetching list:", err));
+        .catch(err => {
+          console.error("Error fetching list:", err);
+          setLoading(false);
+        });
     }
-  }, [selectedGroup]);
+  }, [selectedGroup, API_BASE_URL]);
 
   const groupsData = [
     { 
@@ -81,21 +80,21 @@ const Groups = ({ unread = {} }) => {
       name: 'UPS Engineers', 
       icon: <Monitor />, 
       color: 'blue', 
-      stats: (groupStats && groupStats.ups) ? groupStats.ups : { total: 0, online: 0 } 
+      stats: groupStats.ups || { total: 0, online: 0 } 
     },
     { 
       id: 'lan', 
       name: 'LAN Engineers', 
       icon: <Laptop />, 
       color: 'green', 
-      stats: (groupStats && groupStats.lan) ? groupStats.lan : { total: 0, online: 0 } 
+      stats: groupStats.lan || { total: 0, online: 0 } 
     },
     { 
       id: 'cctv', 
       name: 'CCTV Engineers', 
       icon: <Camera />, 
       color: 'orange', 
-      stats: (groupStats && groupStats.cctv) ? groupStats.cctv : { total: 0, online: 0 } 
+      stats: groupStats.cctv || { total: 0, online: 0 } 
     }
   ];
 
@@ -103,46 +102,32 @@ const Groups = ({ unread = {} }) => {
     <div className="dashboard-wrapper">
       <div className="main-content">
         <main className="groups-body">
-          <div className="groups-header" style={{ 
-  display: 'flex', 
-  justifyContent: 'space-between', 
-  alignItems: 'flex-start' 
-}}>
-  <div>
-    <h2 className="page-title">
-      {selectedGroup ? (
-        <span onClick={() => setSelectedGroup(null)} style={{cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px'}}>
-          <ArrowLeft size={20} /> {selectedGroup.toUpperCase()} List
-        </span>
-      ) : "Engineer Groups"}
-    </h2>
-    <p className="page-subtitle">Manage departments and communication</p>
-  </div>
+          <div className="groups-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="page-title">
+                {selectedGroup ? (
+                  <span onClick={() => setSelectedGroup(null)} style={{cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                    <ArrowLeft size={20} /> {selectedGroup.toUpperCase()} List
+                  </span>
+                ) : "Engineer Groups"}
+              </h2>
+              <p className="page-subtitle">Manage departments and communication</p>
+            </div>
 
-  {/* ADD ENGINEER BUTTON - Top Right logic */}
-  {!selectedGroup && (
-    <button 
-      className="btn-add-engineer"
-      onClick={() => navigate('/AddEngineer')} // Inga unga function-ah kudukkalam
-      style={{
-        backgroundColor: '#4398de',
-        color: 'white',
-        border: 'none',
-        padding: '10px 18px',
-        borderRadius: '6px',
-        fontWeight: 'bold',
-        cursor: 'pointer',
-        fontSize: '0.9rem',
-        marginTop: '20px',
-        transition: 'background 0.3s ease'
-      }}
-      onMouseOver={(e) => e.target.style.backgroundColor = '#3183c5'}
-      onMouseOut={(e) => e.target.style.backgroundColor = '#4398de'}
-    >
-      + Add Engineer
-    </button>
-  )}
-</div>
+            {!selectedGroup && (
+              <button 
+                className="btn-add-engineer"
+                onClick={() => navigate('/AddEngineer')}
+                style={{
+                  backgroundColor: '#4398de', color: 'white', border: 'none',
+                  padding: '10px 18px', borderRadius: '6px', fontWeight: 'bold',
+                  cursor: 'pointer', fontSize: '0.9rem', marginTop: '20px'
+                }}
+              >
+                + Add Engineer
+              </button>
+            )}
+          </div>
 
           {!selectedGroup ? (
             <div className="groups-list">
