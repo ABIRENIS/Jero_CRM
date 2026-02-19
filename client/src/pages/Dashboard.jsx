@@ -9,10 +9,12 @@ import {
 import Header from '../components/Header';
 import io from 'socket.io-client';
 
-const socket = io.connect("http://localhost:5000");
-
 const Dashboard = ({ recentMessages = [] }) => {
   const navigate = useNavigate();
+  
+  // --- UPDATED: Environment Variable Logic ---
+  const API_BASE_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:5000";
+
   const [groupStats, setGroupStats] = useState({
     ups: { total: 0, online: 0 },
     lan: { total: 0, online: 0 },
@@ -21,23 +23,26 @@ const Dashboard = ({ recentMessages = [] }) => {
 
   // Fetch initial stats on component mount
   useEffect(() => {
-    fetch('http://localhost:5000/api/engineers/stats') 
+    // --- UPDATED: Fetching from production URL ---
+    fetch(`${API_BASE_URL}/api/engineers/stats`) 
       .then(res => res.json())
       .then(data => {
         if (data) setGroupStats(data);
       })
       .catch(err => console.error("Error fetching stats:", err));
-  }, []);
+  }, [API_BASE_URL]);
 
   // Listen for real-time status updates
   useEffect(() => {
+    // Create socket connection inside useEffect to prevent multiple instances
+    const socket = io(API_BASE_URL);
+
     const handleStatusUpdate = (data) => {
       console.log("Dashboard - Status update received:", data);
       // Fetch updated stats when status changes
-      fetch('http://localhost:5000/api/engineers/stats')
+      fetch(`${API_BASE_URL}/api/engineers/stats`)
         .then(res => res.json())
         .then(data => {
-          console.log("Dashboard - Updated stats:", data);
           if (data && typeof data === 'object') {
             setGroupStats(data);
           }
@@ -46,24 +51,23 @@ const Dashboard = ({ recentMessages = [] }) => {
     };
 
     socket.on('status_update', handleStatusUpdate);
-    socket.on('connect', () => console.log('Dashboard - Connected to server'));
-    socket.on('disconnect', () => console.log('Dashboard - Disconnected from server'));
-
+    socket.on('update_group_stats', (stats) => setGroupStats(stats)); // Direct stats update from backend
+    
     return () => {
       socket.off('status_update', handleStatusUpdate);
+      socket.disconnect(); // Cleanup connection when leaving dashboard
     };
-  }, []);
+  }, [API_BASE_URL]);
 
-  // FIX: Engineer object-ah accurate keys-oda create panni chat-ku anupuvom
   const handleReply = (msg) => {
     navigate(`/chat/${msg.engineer_db_id}`, { 
       state: { 
         engineer: {
-          id: msg.engineer_db_id,           // Primary Key
-          name: msg.sender,                 // Engineer Name (e.g., 'Sathish')
-          engineer_id: msg.engineer.engineer_id || 'ID not available', // Display ID
-          status: msg.engineer.status || 'Online',
-          group_type: msg.engineer.group_type || 'ups'
+          id: msg.engineer_db_id,           
+          name: msg.sender,                 
+          engineer_id: msg.engineer?.engineer_id || 'ID not available', 
+          status: msg.engineer?.status || 'Online',
+          group_type: msg.engineer?.group_type || 'ups'
         } 
       } 
     });
@@ -119,20 +123,21 @@ const Dashboard = ({ recentMessages = [] }) => {
           <section className="groups-section">
             <h2 className="section-title">Engineer Groups</h2>
             <div className="groups-grid">
-              <div className="group-card">
+              <div className="group-card" onClick={() => navigate('/groups/ups')}>
                 <ChevronRight className="arrow-icon" />
                 <div className="icon-box blue-bg"><Monitor size={32} /></div>
                 <h4>UPS Engineers:</h4>
                 <p><strong>{groupStats.ups?.online || 0} Online</strong></p>
               </div>
               
-              <div className="group-card">
+              <div className="group-card" onClick={() => navigate('/groups/lan')}>
                 <ChevronRight className="arrow-icon" />
                 <div className="icon-box green-bg"><Laptop size={32} /></div>
                 <h4>LAN Engineers:</h4>
                 <p><strong>{groupStats.lan?.online || 0} Online</strong></p>
               </div>
-              <div className="group-card">
+
+              <div className="group-card" onClick={() => navigate('/groups/cctv')}>
                 <ChevronRight className="arrow-icon" />
                 <div className="icon-box blue-bg"><Cctv size={32} /></div>
                 <h4>CCTV Engineers:</h4>
