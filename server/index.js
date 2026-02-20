@@ -279,32 +279,48 @@ io.on('connection', (socket) => {
     // ... rest of your disconnect logic
 });
 
-    socket.on('join_chat', (userId) => socket.join(userId));
+   // --- 8. REAL-TIME LOGIC ---
+const connectedEngineers = new Map();
 
+io.on('connection', (socket) => {
+    // A. REGISTER STATUS
+    socket.on('register_engineer', async (engineerId) => {
+        connectedEngineers.set(socket.id, engineerId);
+        try {
+            await pool.query("UPDATE engineers SET status = 'Online' WHERE id = $1", [engineerId]);
+            broadcastStats();
+            io.emit('status_changed', { id: engineerId, status: 'Online' });
+        } catch (err) {
+            console.error("Socket Register Error:", err);
+        }
+    });
+
+    // B. JOIN CHAT ROOM
+    socket.on('join_chat', (engineer_db_id) => {
+        socket.join(engineer_db_id); 
+        console.log(`Socket ${socket.id} joined room: ${engineer_db_id}`);
+    });
+
+    // C. SEND MESSAGE
     socket.on('send_message', async (data) => {
-    const { engineer_db_id, sender, sender_type, message_text, file_info } = data;
-    try {
-        // 1. Save to Database
-        await pool.query(
-            "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5)",
-            [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
-        );
+        const { engineer_db_id, sender, sender_type, message_text, file_info } = data;
+        try {
+            // 1. Save to Database
+            await pool.query(
+                "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5)",
+                [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
+            );
 
-        // 2. SEND TO ENGINEER:
-        // We send it to the specific room for that engineer
-        io.to(engineer_db_id).emit('receive_message', data);
+            // 2. Broadcast - This sends to both Engineer and Executive instantly
+            io.to(engineer_db_id).emit('receive_message', data); // To Engineer
+            socket.broadcast.emit('receive_message', data);    // To Executive
+            
+        } catch (err) {
+            console.error("Msg Save Error:", err.message);
+        }
+    });
 
-        // 3. SEND TO EXECUTIVE: 
-        // We also emit it globally or to an 'admins' room so the Exe Panel picks it up
-        // Using socket.broadcast.emit sends it to everyone EXCEPT the sender
-        // Or just use io.emit to be safe for now so everyone stays in sync
-        io.emit('receive_message', data); 
-
-    } catch (err) {
-        console.error("Msg Save Error:", err.message);
-    }
-});
-
+    // D. DISCONNECT
     socket.on('disconnect', async () => {
         const engineerId = connectedEngineers.get(socket.id);
         if (engineerId) {
@@ -318,6 +334,7 @@ io.on('connection', (socket) => {
             }
         }
     });
+}); // End of io.on('connection')
 
 // --- 9. SERVER LISTEN (RENDER COMPATIBLE) ---
 const PORT = process.env.PORT || 5000;
