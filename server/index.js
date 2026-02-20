@@ -51,7 +51,7 @@ app.use('/uploads', express.static(uploadDir));
 // --- 3. SOCKET.IO SETUP ---
 const io = new Server(server, {
     cors: {
-        origin: "*", // For sockets, strictly limiting origins is safer in next phase
+        origin: process.env.CLIENT_URL || "*", // For sockets, strictly limiting origins is safer in next phase
         methods: ["GET", "POST"]
     }
 });
