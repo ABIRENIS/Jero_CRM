@@ -237,6 +237,7 @@ app.get('/api/engineers/:groupType', async (req, res) => {
 const connectedEngineers = new Map();
 
 io.on('connection', (socket) => {
+    // 1. Existing Status Logic (Keep this)
     socket.on('register_engineer', async (engineerId) => {
         connectedEngineers.set(socket.id, engineerId);
         try {
@@ -247,6 +248,36 @@ io.on('connection', (socket) => {
             console.error("Socket Register Error:", err);
         }
     });
+
+    // 2. NEW: The "Room" Logic (Crucial for Real-time Chat)
+    socket.on('join_chat', (engineer_db_id) => {
+        socket.join(engineer_db_id); // This creates the "room"
+        console.log(`Socket ${socket.id} joined room for Engineer ID: ${engineer_db_id}`);
+    });
+
+    // 3. Updated Message Logic
+    socket.on('send_message', async (data) => {
+        const { engineer_db_id, sender, sender_type, message_text, file_info } = data;
+        try {
+            await pool.query(
+                "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5)",
+                [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
+            );
+
+            // Send to the specific engineer room
+            io.to(engineer_db_id).emit('receive_message', data);
+
+            // Also emit globally so the Executive Dashboard (Admin) sees it immediately
+            // Since Admins usually aren't in specific rooms, this hits their main listener
+            socket.broadcast.emit('receive_message', data); 
+
+        } catch (err) {
+            console.error("Msg Save Error:", err.message);
+        }
+    });
+    
+    // ... rest of your disconnect logic
+});
 
     socket.on('join_chat', (userId) => socket.join(userId));
 
