@@ -1,5 +1,11 @@
-// 1. Socket connection initialize (Port 5000 Backend)
-const socket = io('http://localhost:5000');
+// --- 0. CONFIGURATION (Dynamic URL) ---
+// This automatically switches between your local machine and your live Render server
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:5000'
+    : 'https://jero-crm.onrender.com';
+
+// 1. Socket connection initialize
+const socket = io(API_BASE_URL);
 
 // Login details retrieval from LocalStorage
 let currentEngineer = JSON.parse(localStorage.getItem('engineerData')) || null;
@@ -9,7 +15,8 @@ async function loadChatHistory() {
     if (!currentEngineer) return;
 
     try {
-        const response = await fetch(`http://localhost:5000/api/chat/${currentEngineer.id}`);
+        // Updated to use API_BASE_URL
+        const response = await fetch(`${API_BASE_URL}/api/chat/${currentEngineer.id}`);
         const history = await response.json();
         
         const chatWindow = document.getElementById('chat-window');
@@ -70,7 +77,8 @@ socket.on('connect', registerWithServer);
 // --- 3. LOGIN & LOGOUT LOGIC ---
 async function loginEngineer(email, password) {
     try {
-        const response = await fetch('http://localhost:5000/api/engineer/login', {
+        // Updated to use API_BASE_URL
+        const response = await fetch(`${API_BASE_URL}/api/engineer/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
@@ -92,25 +100,22 @@ async function loginEngineer(email, password) {
     }
 }
 
-// NEW: Explicit Logout Logic
 async function handleLogout() {
     if (!currentEngineer) return;
 
     try {
-        // Backend-ku signal anuppi status-ah Offline mathurom
-        await fetch('http://localhost:5000/api/engineer/logout', {
+        // Updated to use API_BASE_URL
+        await fetch(`${API_BASE_URL}/api/engineer/logout`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ engineer_id: currentEngineer.id })
         });
 
-        // Local storage clear panni, socket-ah cut pandrom
         localStorage.removeItem('engineerData');
         socket.disconnect();
         window.location.href = 'index.html';
     } catch (err) {
         console.error("Logout error:", err);
-        // Error vandhaalum safety-ku clear panniduvom
         localStorage.clear();
         window.location.href = 'index.html';
     }
@@ -133,7 +138,8 @@ async function sendEngineerRequest() {
         const formData = new FormData();
         formData.append('file', file);
         try {
-            const uploadRes = await fetch('http://localhost:5000/api/upload', {
+            // Updated to use API_BASE_URL
+            const uploadRes = await fetch(`${API_BASE_URL}/api/upload`, {
                 method: 'POST',
                 body: formData
             });
