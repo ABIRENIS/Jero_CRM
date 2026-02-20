@@ -318,7 +318,6 @@ io.on('connection', (socket) => {
             }
         }
     });
-});
 
 // --- 9. SERVER LISTEN (RENDER COMPATIBLE) ---
 const PORT = process.env.PORT || 5000;
