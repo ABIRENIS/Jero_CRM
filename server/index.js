@@ -17,7 +17,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
     process.env.CLIENT_URL, 
     process.env.PORTAL_URL,
-    'jerobyte-crm-b7ch1cg2a-abirenis-projects.vercel.app',
+    'https://jerobyte-crm-b7ch1cg2a-abirenis-projects.vercel.app',
     'http://localhost:3000'
 ];
 
