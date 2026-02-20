@@ -251,17 +251,28 @@ io.on('connection', (socket) => {
     socket.on('join_chat', (userId) => socket.join(userId));
 
     socket.on('send_message', async (data) => {
-        const { engineer_db_id, sender, sender_type, message_text, file_info } = data;
-        try {
-            await pool.query(
-                "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5)",
-                [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
-            );
-            io.to(engineer_db_id).emit('receive_message', data);
-        } catch (err) {
-            console.error("Msg Save Error:", err.message);
-        }
-    });
+    const { engineer_db_id, sender, sender_type, message_text, file_info } = data;
+    try {
+        // 1. Save to Database
+        await pool.query(
+            "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5)",
+            [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
+        );
+
+        // 2. SEND TO ENGINEER:
+        // We send it to the specific room for that engineer
+        io.to(engineer_db_id).emit('receive_message', data);
+
+        // 3. SEND TO EXECUTIVE: 
+        // We also emit it globally or to an 'admins' room so the Exe Panel picks it up
+        // Using socket.broadcast.emit sends it to everyone EXCEPT the sender
+        // Or just use io.emit to be safe for now so everyone stays in sync
+        io.emit('receive_message', data); 
+
+    } catch (err) {
+        console.error("Msg Save Error:", err.message);
+    }
+});
 
     socket.on('disconnect', async () => {
         const engineerId = connectedEngineers.get(socket.id);
