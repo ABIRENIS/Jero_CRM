@@ -280,10 +280,14 @@ io.on('connection', (socket) => {
 });
 
    // --- 8. REAL-TIME LOGIC ---
+// --- 8. REAL-TIME LOGIC ---
+// ONLY DECLARE THIS ONCE
 const connectedEngineers = new Map();
 
 io.on('connection', (socket) => {
-    // A. REGISTER STATUS
+    console.log(`New connection: ${socket.id}`);
+
+    // A. REGISTER STATUS (For Dashboard Online/Offline)
     socket.on('register_engineer', async (engineerId) => {
         connectedEngineers.set(socket.id, engineerId);
         try {
@@ -295,13 +299,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // B. JOIN CHAT ROOM
+    // B. JOIN CHAT ROOM (For Real-time messages)
     socket.on('join_chat', (engineer_db_id) => {
         socket.join(engineer_db_id); 
         console.log(`Socket ${socket.id} joined room: ${engineer_db_id}`);
     });
 
-    // C. SEND MESSAGE
+    // C. SEND & RECEIVE MESSAGE
     socket.on('send_message', async (data) => {
         const { engineer_db_id, sender, sender_type, message_text, file_info } = data;
         try {
@@ -311,16 +315,16 @@ io.on('connection', (socket) => {
                 [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
             );
 
-            // 2. Broadcast - This sends to both Engineer and Executive instantly
-            io.to(engineer_db_id).emit('receive_message', data); // To Engineer
-            socket.broadcast.emit('receive_message', data);    // To Executive
+            // 2. Broadcast to both sides
+            io.to(engineer_db_id).emit('receive_message', data); // To Engineer room
+            socket.broadcast.emit('receive_message', data);    // To Executive Panel
             
         } catch (err) {
             console.error("Msg Save Error:", err.message);
         }
     });
 
-    // D. DISCONNECT
+    // D. DISCONNECT LOGIC
     socket.on('disconnect', async () => {
         const engineerId = connectedEngineers.get(socket.id);
         if (engineerId) {
@@ -334,8 +338,7 @@ io.on('connection', (socket) => {
             }
         }
     });
-}); // End of io.on('connection')
-
+});
 // --- 9. SERVER LISTEN (RENDER COMPATIBLE) ---
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
