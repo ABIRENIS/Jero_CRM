@@ -1,5 +1,4 @@
 // --- 0. CONFIGURATION (Dynamic URL) ---
-// This automatically switches between your local machine and your live Render server
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:5000'
     : 'https://jero-crm.onrender.com';
@@ -15,7 +14,6 @@ async function loadChatHistory() {
     if (!currentEngineer) return;
 
     try {
-        // Updated to use API_BASE_URL
         const response = await fetch(`${API_BASE_URL}/api/chat/${currentEngineer.id}`);
         const history = await response.json();
         
@@ -24,31 +22,7 @@ async function loadChatHistory() {
         chatWindow.innerHTML = ''; 
 
         history.forEach(msg => {
-            const msgDiv = document.createElement('div');
-            const isMe = msg.sender_type === 'engineer';
-            msgDiv.className = isMe ? 'msg engineer-msg-style' : 'msg executive';
-            
-            let content = `<small>${isMe ? 'You' : msg.sender}</small><p>${msg.message_text || ''}</p>`;
-            
-            if (msg.file_info) {
-                const file = typeof msg.file_info === 'string' ? JSON.parse(msg.file_info) : msg.file_info;
-                if (isMe) {
-                    content += `
-                        <div class="file-preview-box" onclick="window.open('${file.url}', '_blank')" 
-                             style="cursor: pointer; background: #e3f2fd; padding: 10px; border-radius: 8px; margin-top: 5px; font-size: 0.85rem; border: 1px solid #90caf9; color: #1565c0; display: flex; align-items: center; gap: 8px;">
-                            📄 <span>${file.name}</span> <small>(View Sent)</small>
-                        </div>`;
-                } else {
-                    content += `
-                        <div class="file-attachment" onclick="downloadFile('${file.url}', '${file.name}')" 
-                             style="cursor: pointer; background: #fff; padding: 10px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; display: flex; align-items: center; gap: 8px;">
-                            📥 <span style="color: #1b4e8c; font-weight: bold;">Download ${file.name}</span>
-                        </div>`;
-                }
-            }
-            
-            msgDiv.innerHTML = content;
-            chatWindow.appendChild(msgDiv);
+            appendMessageToUI(msg);
         });
         
         chatWindow.scrollTop = chatWindow.scrollHeight;
@@ -60,7 +34,7 @@ async function loadChatHistory() {
 // --- 2. REGISTRATION & CONNECTION LOGIC ---
 function registerWithServer() {
     if (currentEngineer && currentEngineer.id) {
-        console.log("Registering status for:", currentEngineer.id);
+        console.log("Registering status and joining room for:", currentEngineer.id);
         socket.emit('register_engineer', currentEngineer.id);
         socket.emit('join_chat', currentEngineer.id);
     }
@@ -74,63 +48,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
 socket.on('connect', registerWithServer);
 
-// --- 3. LOGIN & LOGOUT LOGIC ---
-async function loginEngineer(email, password) {
-    try {
-        // Updated to use API_BASE_URL
-        const response = await fetch(`${API_BASE_URL}/api/engineer/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
+// --- 3. UI HELPER FUNCTION (Standardized for History & Live) ---
+function appendMessageToUI(data) {
+    const chatWindow = document.getElementById('chat-window');
+    if (!chatWindow) return;
 
-        const data = await response.json();
+    // Create a unique key to prevent duplicate messages on screen
+    const messageKey = `msg-${data.created_at}-${data.message_text}`;
+    if (document.getElementById(messageKey)) return;
 
-        if (data.success) {
-            currentEngineer = data.engineer;
-            localStorage.setItem('engineerData', JSON.stringify(data.engineer));
-            registerWithServer();
-            window.location.href = 'dashboard.html'; 
+    const msgDiv = document.createElement('div');
+    msgDiv.id = messageKey;
+    
+    const isMe = data.sender_type === 'engineer';
+    msgDiv.className = isMe ? 'msg engineer-msg-style' : 'msg executive';
+    
+    let content = `<small>${isMe ? 'You' : data.sender}</small><p>${data.message_text || ''}</p>`;
+    
+    if (data.file_info) {
+        const file = typeof data.file_info === 'string' ? JSON.parse(data.file_info) : data.file_info;
+        if (isMe) {
+            content += `
+                <div class="file-preview-box" onclick="window.open('${file.url}', '_blank')" 
+                     style="cursor: pointer; background: #e3f2fd; padding: 10px; border-radius: 8px; margin-top: 5px; font-size: 0.85rem; border: 1px solid #90caf9; color: #1565c0; display: flex; align-items: center; gap: 8px;">
+                    📄 <span>${file.name}</span> <small>(View Sent)</small>
+                </div>`;
         } else {
-            alert(data.message); 
+            content += `
+                <div class="file-attachment" onclick="downloadFile('${file.url}', '${file.name}')" 
+                     style="cursor: pointer; background: #fff; padding: 10px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; display: flex; align-items: center; gap: 8px;">
+                    📥 <span style="color: #1b4e8c; font-weight: bold;">Download ${file.name}</span>
+                </div>`;
         }
-    } catch (err) {
-        console.error("Login failed:", err);
-        alert("Server connection error!");
     }
-}
-
-async function handleLogout() {
-    if (!currentEngineer) return;
-
-    try {
-        // Updated to use API_BASE_URL
-        await fetch(`${API_BASE_URL}/api/engineer/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ engineer_id: currentEngineer.id })
-        });
-
-        localStorage.removeItem('engineerData');
-        socket.disconnect();
-        window.location.href = 'index.html';
-    } catch (err) {
-        console.error("Logout error:", err);
-        localStorage.clear();
-        window.location.href = 'index.html';
-    }
+    
+    msgDiv.innerHTML = content;
+    chatWindow.appendChild(msgDiv);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
 // --- 4. MESSAGE SEND LOGIC ---
 async function sendEngineerRequest() {
     const msgArea = document.getElementById('engineer-msg');
     const fileInput = document.getElementById('eng-file-input');
-    const chatWindow = document.getElementById('chat-window');
     
     const message = msgArea.value.trim();
     const file = fileInput ? fileInput.files[0] : null;
 
-    if (!message && !file || !currentEngineer) return;
+    if ((!message && !file) || !currentEngineer) return;
 
     let uploadedFile = null;
 
@@ -138,7 +103,6 @@ async function sendEngineerRequest() {
         const formData = new FormData();
         formData.append('file', file);
         try {
-            // Updated to use API_BASE_URL
             const uploadRes = await fetch(`${API_BASE_URL}/api/upload`, {
                 method: 'POST',
                 body: formData
@@ -161,31 +125,27 @@ async function sendEngineerRequest() {
         created_at: new Date().toISOString()
     };
 
+    // Emit to server (The server will broadcast this back via 'receive_message')
     socket.emit('send_message', chatData);
 
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'msg engineer-msg-style';
-    
-    let content = `<small>You</small><p>${message || ''}</p>`;
-    if (uploadedFile) {
-        content += `
-            <div class="file-preview-box" 
-                 onclick="window.open('${uploadedFile.url}', '_blank')"
-                 style="background: #e3f2fd; padding: 10px; border-radius: 8px; margin-top: 5px; font-size: 0.85rem; border: 1px solid #90caf9; color: #1565c0; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                📄 <span>${uploadedFile.name}</span>
-                <small style="color: #666; font-size: 0.7rem;">(View Sent)</small>
-            </div>`;
-    }
-
-    msgDiv.innerHTML = content;
-    chatWindow.appendChild(msgDiv);
-
+    // Clear inputs
     msgArea.value = '';
-    if(fileInput) fileInput.value = '';
-    chatWindow.scrollTop = chatWindow.scrollHeight;
+    if (fileInput) fileInput.value = '';
 }
 
-// --- 5. DOWNLOAD & RECEIVE LOGIC ---
+// --- 5. RECEIVE LOGIC ---
+socket.on('receive_message', (data) => {
+    // SECURITY CHECK: Only show message if it belongs to this engineer
+    if (String(data.engineer_db_id) === String(currentEngineer.id)) {
+        appendMessageToUI(data);
+
+        if (data.sender_type === 'admin') {
+            showToastNotification(`New message from Executive`);
+        }
+    }
+});
+
+// --- 6. AUTH & TOOLS ---
 async function downloadFile(url, fileName) {
     try {
         const response = await fetch(url);
@@ -203,33 +163,6 @@ async function downloadFile(url, fileName) {
     }
 }
 
-socket.on('receive_message', (data) => {
-    if (data.sender_type === 'admin') {
-        showToastNotification(`New message from Executive`);
-
-        const chatWindow = document.getElementById('chat-window');
-        if(!chatWindow) return;
-
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'msg executive';
-        
-        let content = `<small>${data.sender}</small><p>${data.message_text || ""}</p>`;
-        
-        if (data.file_info) {
-            const file = typeof data.file_info === 'string' ? JSON.parse(data.file_info) : data.file_info;
-            content += `
-                <div class="file-attachment" onclick="downloadFile('${file.url}', '${file.name}')" 
-                     style="cursor: pointer; margin-top: 5px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 5px;">
-                    📥 Download ${file.name}
-                </div>`;
-        }
-
-        msgDiv.innerHTML = content;
-        chatWindow.appendChild(msgDiv);
-        chatWindow.scrollTop = chatWindow.scrollHeight;
-    }
-});
-
 function showToastNotification(text) {
     const toast = document.createElement('div');
     toast.innerText = text;
@@ -242,4 +175,22 @@ function showToastNotification(text) {
     `;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 2500);
+}
+
+async function handleLogout() {
+    if (!currentEngineer) return;
+    try {
+        await fetch(`${API_BASE_URL}/api/engineer/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ engineer_id: currentEngineer.id })
+        });
+        localStorage.removeItem('engineerData');
+        socket.disconnect();
+        window.location.href = 'index.html';
+    } catch (err) {
+        console.error("Logout error:", err);
+        localStorage.clear();
+        window.location.href = 'index.html';
+    }
 }
