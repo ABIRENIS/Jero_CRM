@@ -16,19 +16,25 @@ const ChatPage = ({ socket, clearUnread }) => {
   const [chatHistory, setChatHistory] = useState([]);
   const scrollRef = useRef();
   const fileInputRef = useRef();
+  
+  // Use Ref to keep track of active engineer ID inside the socket listener
   const engineerIdRef = useRef(engineer?.id);
 
+  // 1. Sync Ref and Clear Unread on Load
   useEffect(() => {
-    if (engineer?.id && clearUnread) {
-      clearUnread(engineer.id);
+    if (engineer?.id) {
       engineerIdRef.current = engineer.id;
+      if (clearUnread) clearUnread(engineer.id);
     }
   }, [engineer?.id, clearUnread]);
 
-  // --- 1. UPDATED: Load History from Production URL ---
+  // 2. Join Room & Load History
   useEffect(() => {
     if (engineer && socket) {
-      socket.emit("join_chat", engineer.id);
+      // Standardize ID as String for Room Joining
+      const roomId = String(engineer.id);
+      socket.emit("join_chat", roomId);
+      
       fetch(`${API_BASE_URL}/api/chat/${engineer.id}`)
         .then(res => res.json())
         .then(data => setChatHistory(data)) 
@@ -36,20 +42,27 @@ const ChatPage = ({ socket, clearUnread }) => {
     }
   }, [engineer, socket, API_BASE_URL]);
 
+  // 3. Socket Listener (The "Filter" logic)
   useEffect(() => {
     if (!socket) return;
 
     const handleReceiveMessage = (data) => {
-      setChatHistory((prev) => {
-        const isDuplicate = prev.some(msg => 
-          msg.created_at === data.created_at && msg.message_text === data.message_text
-        );
-        if (isDuplicate) return prev;
-        return [...prev, data];
-      });
-      
-      if (data.engineer_db_id === engineerIdRef.current && clearUnread) {
-        clearUnread(data.engineer_db_id);
+      // CRITICAL: Check if incoming message belongs to the open chat
+      const incomingId = String(data.engineer_db_id);
+      const activeId = String(engineerIdRef.current);
+
+      if (incomingId === activeId) {
+        setChatHistory((prev) => {
+          // Prevent UI duplicates
+          const isDuplicate = prev.some(msg => 
+            msg.created_at === data.created_at && msg.message_text === data.message_text
+          );
+          if (isDuplicate) return prev;
+          return [...prev, data];
+        });
+        
+        // Auto-clear unread if the chat is open
+        if (clearUnread) clearUnread(incomingId);
       }
     };
 
@@ -57,6 +70,7 @@ const ChatPage = ({ socket, clearUnread }) => {
     return () => socket.off("receive_message", handleReceiveMessage);
   }, [socket, clearUnread]);
 
+  // 4. Auto-Scroll
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory]);
@@ -66,7 +80,6 @@ const ChatPage = ({ socket, clearUnread }) => {
     if (file) setSelectedFile(file);
   };
 
-  // --- 2. UPDATED: Download logic handles CORS from Render ---
   const downloadFile = async (url, fileName) => {
     try {
       const response = await fetch(url);
@@ -84,7 +97,6 @@ const ChatPage = ({ socket, clearUnread }) => {
     }
   };
 
-  // --- 3. UPDATED: Upload to Production URL ---
   const sendMessage = async (e) => {
     e.preventDefault();
     if ((message.trim() !== "" || selectedFile) && engineer && socket) {
@@ -114,7 +126,9 @@ const ChatPage = ({ socket, clearUnread }) => {
         created_at: new Date().toISOString()
       };
 
+      // Server broadcasts this back, so it will appear via handleReceiveMessage
       socket.emit("send_message", messageData);
+      
       setMessage("");
       setSelectedFile(null);
     }
@@ -130,8 +144,8 @@ const ChatPage = ({ socket, clearUnread }) => {
   if (!engineer) return <div className="p-20">No engineer selected.</div>;
 
   const displayName = engineer.name || 'Engineer';
-  const displayId = engineer.engineer_id || engineer.id || 'N/A';
-  const displayStatus = engineer.status || 'Online';
+  const displayId = engineer.engineer_id || 'N/A';
+  const displayStatus = engineer.status || 'Offline';
 
   return (
     <div className="dashboard-wrapper">
@@ -145,7 +159,7 @@ const ChatPage = ({ socket, clearUnread }) => {
               <div className="chat-avatar">{displayName.charAt(0)}</div>
               <div>
                 <h4>{displayName}</h4>
-                <p>ID: {displayId} • <span>{displayStatus}</span></p>
+                <p>ID: {displayId} • <span className={`status-${displayStatus.toLowerCase()}`}>{displayStatus}</span></p>
               </div>
             </div>
           </div>
