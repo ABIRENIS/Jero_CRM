@@ -18,7 +18,7 @@ const allowedOrigins = [
     process.env.CLIENT_URL, 
     process.env.PORTAL_URL,
     'https://jerobyte-crm-exe.vercel.app',
-    'https://jerocrmeng.vercel.app'
+    'https://jerocrmeng.vercel.app',
     'http://localhost:3000'
 ];
 
