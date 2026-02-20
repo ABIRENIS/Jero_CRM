@@ -257,13 +257,17 @@ io.on('connection', (socket) => {
 
     // B. JOIN CHAT ROOM (For Real-time messages)
     socket.on('join_chat', (engineer_db_id) => {
-        socket.join(engineer_db_id); 
-        console.log(`Socket ${socket.id} joined room: ${engineer_db_id}`);
+        if (!engineer_db_id) return;
+        
+        const roomId = String(engineer_db_id); // Force ID to be a String
+        socket.join(roomId); 
+        console.log(`✅ Socket ${socket.id} successfully joined Room: ${roomId}`);
     });
 
     // C. SEND & RECEIVE MESSAGE
     socket.on('send_message', async (data) => {
         const { engineer_db_id, sender, sender_type, message_text, file_info } = data;
+        
         try {
             // 1. Save to Database
             await pool.query(
@@ -271,12 +275,23 @@ io.on('connection', (socket) => {
                 [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
             );
 
-            // 2. Broadcast to both sides
-            io.to(engineer_db_id).emit('receive_message', data); // To Engineer room
-            socket.broadcast.emit('receive_message', data);    // To Executive Panel
-            
+            const roomId = String(engineer_db_id); // Force match with Join ID
+
+            // 2. Broadcast to Engineer
+            // This hits the specific room the engineer joined
+            io.to(roomId).emit('receive_message', data);
+
+            // 3. Broadcast to Executive
+            // If the sender is an engineer, we use io.emit to tell all Admins.
+            // If sender is admin, io.to(roomId) already covers the engineer.
+            if (sender_type === 'engineer') {
+                socket.broadcast.emit('receive_message', data); 
+            }
+
+            console.log(`📨 Message from ${sender} sent to Room ${roomId}`);
+
         } catch (err) {
-            console.error("Msg Save Error:", err.message);
+            console.error("❌ Msg Save Error:", err.message);
         }
     });
 
