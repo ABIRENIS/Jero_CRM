@@ -194,9 +194,12 @@ async function handleLogout() {
         window.location.href = 'index.html';
     }
 }
-// --- 7. LOGIN LOGIC (MISSING PIECE) ---
+/**
+ * LOGIN LOGIC: Connects to Render/Neon
+ */
 async function loginEngineer(email, password) {
     try {
+        // Use the API_BASE_URL defined at the top of your chat.js
         const response = await fetch(`${API_BASE_URL}/api/engineer/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -206,19 +209,19 @@ async function loginEngineer(email, password) {
         const data = await response.json();
 
         if (response.ok && data.id) {
-            // Save engineer data to localStorage
+            // 1. Save data for session persistence
             localStorage.setItem('engineerData', JSON.stringify(data));
             
-            // Redirect to dashboard
+            // 2. Redirect to dashboard
             window.location.href = 'dashboard.html';
         } else {
             alert(data.message || "Invalid Email or Password");
         }
     } catch (err) {
-        console.error("Login connection error:", err);
-        alert("The server on Render is waking up. Please wait 20 seconds and try again.");
+        console.error("Login Error:", err);
+        alert("The server is waking up. Please wait 20 seconds and try again.");
     }
 }
 
-// Make it globally accessible for index.html
+// Make the function globally available to index.html
 window.loginEngineer = loginEngineer;
