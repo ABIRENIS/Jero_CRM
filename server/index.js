@@ -125,7 +125,13 @@ app.post('/api/engineer/login', async (req, res) => {
             await pool.query("UPDATE engineers SET status = 'Online' WHERE id = $1", [eng.id]);
             broadcastStats();
             io.emit('status_changed', { id: eng.id, status: 'Online' });
-            res.json({ success: true, engineer: eng });
+            res.json({ 
+                success: true, 
+                id: eng.id, 
+                name: eng.name, 
+                engineer_id: eng.engineer_id,
+                email: eng.email 
+            });
         } else { res.status(401).json({ success: false, message: "Invalid Credentials" }); }
     } catch (err) { res.status(500).json({ error: "Login error" }); }
 });
