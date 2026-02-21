@@ -149,11 +149,32 @@ app.post('/api/engineer/logout', async (req, res) => {
 app.put('/api/chat/edit', async (req, res) => {
     const { message_id, new_text } = req.body;
     try {
-        await pool.query(
-            "UPDATE chat_messages SET message_text = $1, is_edited = true WHERE id = $2",
-            [new_text, message_id]
-        );
-        res.json({ success: true, message: "Message updated successfully" });
+        // 1. Mudhalla andha message eppo create aachunu check panrom
+        const checkQuery = "SELECT created_at FROM chat_messages WHERE id = $1";
+        const result = await pool.query(checkQuery, [message_id]);
+
+        if (result.rows.length > 0) {
+            const createdAt = new Date(result.rows[0].created_at);
+            const now = new Date();
+            const diffInMinutes = (now - createdAt) / 1000 / 60; // Time difference in minutes
+
+            // 2. 5 minutes thanditta error anuprom
+            if (diffInMinutes > 5) {
+                return res.status(403).json({ 
+                    success: false, 
+                    message: "Edit time expired! You can only edit within 5 minutes." 
+                });
+            }
+
+            // 3. 5 mins kulla irundha mattum update panrom
+            await pool.query(
+                "UPDATE chat_messages SET message_text = $1, is_edited = true WHERE id = $2",
+                [new_text, message_id]
+            );
+            res.json({ success: true, message: "Message updated successfully" });
+        } else {
+            res.status(404).json({ error: "Message not found" });
+        }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
