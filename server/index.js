@@ -85,7 +85,7 @@ const broadcastStats = async () => {
     }
 };
 
-// --- 6. CRON JOB ---
+// --- 6. CRON JOB (Cleanup old messages) ---
 cron.schedule('0 0 * * *', async () => {
     try {
         await pool.query("DELETE FROM chat_messages WHERE created_at < NOW() - INTERVAL '30 days'");
@@ -94,6 +94,7 @@ cron.schedule('0 0 * * *', async () => {
 
 // --- 7. API ROUTES ---
 
+// Add Engineer
 app.post('/api/engineers/add', async (req, res) => {
     const { name, group_type, email, password, phone } = req.body;
     try {
@@ -116,6 +117,7 @@ app.post('/api/engineers/add', async (req, res) => {
     } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// Login
 app.post('/api/engineer/login', async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -136,6 +138,7 @@ app.post('/api/engineer/login', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Login error" }); }
 });
 
+// Logout
 app.post('/api/engineer/logout', async (req, res) => {
     const { engineer_id } = req.body;
     try {
@@ -145,20 +148,19 @@ app.post('/api/engineer/logout', async (req, res) => {
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: "Logout error" }); }
 });
-// Message Edit Route.......................................................................................................>
+
+// --- UPDATED MESSAGE EDIT ROUTE ---
 app.put('/api/chat/edit', async (req, res) => {
-    const { message_id, new_text } = req.body;
+    const { message_id, new_text, engineer_db_id } = req.body; 
     try {
-        // 1. Mudhalla andha message eppo create aachunu check panrom
         const checkQuery = "SELECT created_at FROM chat_messages WHERE id = $1";
         const result = await pool.query(checkQuery, [message_id]);
 
         if (result.rows.length > 0) {
             const createdAt = new Date(result.rows[0].created_at);
             const now = new Date();
-            const diffInMinutes = (now - createdAt) / 1000 / 60; // Time difference in minutes
+            const diffInMinutes = (now - createdAt) / 1000 / 60;
 
-            // 2. 5 minutes thanditta error anuprom
             if (diffInMinutes > 5) {
                 return res.status(403).json({ 
                     success: false, 
@@ -166,11 +168,14 @@ app.put('/api/chat/edit', async (req, res) => {
                 });
             }
 
-            // 3. 5 mins kulla irundha mattum update panrom
             await pool.query(
                 "UPDATE chat_messages SET message_text = $1, is_edited = true WHERE id = $2",
                 [new_text, message_id]
             );
+
+            // Notify all clients about the edit
+            io.emit('message_edited', { message_id, new_text, engineer_db_id });
+
             res.json({ success: true, message: "Message updated successfully" });
         } else {
             res.status(404).json({ error: "Message not found" });
@@ -179,14 +184,33 @@ app.put('/api/chat/edit', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-// Message Edit Route.......................................................................................................>
 
+// --- NEW MESSAGE DELETE ROUTE ---
+app.delete('/api/chat/delete/:id', async (req, res) => {
+    const message_id = req.params.id;
+    try {
+        const check = await pool.query("SELECT created_at FROM chat_messages WHERE id = $1", [message_id]);
+        if (check.rows.length > 0) {
+            const diff = (new Date() - new Date(check.rows[0].created_at)) / 1000 / 60;
+            if (diff > 5) return res.status(403).json({ message: "Cannot delete after 5 minutes" });
+
+            await pool.query("DELETE FROM chat_messages WHERE id = $1", [message_id]);
+            io.emit('message_deleted', { message_id });
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: "Message not found" });
+        }
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// File Upload
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: "No file" });
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     res.json({ url: fileUrl, name: req.file.originalname, type: req.file.mimetype });
 });
 
+// Get Chat History
 app.get('/api/chat/:engineer_id', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM chat_messages WHERE engineer_db_id = $1 ORDER BY created_at ASC", [req.params.engineer_id]);
@@ -194,6 +218,7 @@ app.get('/api/chat/:engineer_id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "History error" }); }
 });
 
+// Get Stats
 app.get('/api/engineers/stats', async (req, res) => {
     try {
         const query = `SELECT group_type, COUNT(*) as total, SUM(CASE WHEN status = 'Online' THEN 1 ELSE 0 END) as online_count FROM engineers GROUP BY group_type`;
@@ -207,6 +232,7 @@ app.get('/api/engineers/stats', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Stats fetch error" }); }
 });
 
+// Get Engineers by Group
 app.get('/api/engineers/:groupType', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM engineers WHERE group_type = $1 ORDER BY id ASC", [req.params.groupType.toLowerCase()]);
@@ -214,7 +240,7 @@ app.get('/api/engineers/:groupType', async (req, res) => {
     } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// --- 8. REAL-TIME LOGIC ---
+// --- 8. REAL-TIME LOGIC (SOCKET.IO) ---
 const connectedEngineers = new Map();
 
 io.on('connection', (socket) => {
@@ -242,17 +268,16 @@ io.on('connection', (socket) => {
         const roomId = String(engineer_db_id);
         
         try {
-            await pool.query(
-                "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5)",
+            const result = await pool.query(
+                "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at",
                 [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
             );
 
-            // BROADCAST STRATEGY:
-            // 1. Send to the specific room (Captured by Engineer OR Admin if they joined room)
-            io.to(roomId).emit('receive_message', data);
+            const savedMsg = { ...data, id: result.rows[0].id, created_at: result.rows[0].created_at };
 
-            // 2. Global broadcast for Executive Panel (If they aren't in a specific room yet)
-            socket.broadcast.emit('receive_message', data);
+            // Emit to specific chat room and global broadcast for admin panel
+            io.to(roomId).emit('receive_message', savedMsg);
+            socket.broadcast.emit('receive_message', savedMsg);
 
         } catch (err) { console.error("Msg Save Error:", err.message); }
     });
