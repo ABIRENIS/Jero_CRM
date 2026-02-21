@@ -48,13 +48,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
 socket.on('connect', registerWithServer);
 
-// --- 3. UI HELPER FUNCTION (Standardized for History & Live) ---
+// --- 3. UI HELPER FUNCTION (Standardized for History & Live) ---........................................................................>
+// --- 1. Message Edit Function ---
+async function editMsg(msgId, oldText) {
+    const newText = prompt("Edit your message:", oldText);
+    if (newText === null || newText.trim() === "" || newText === oldText) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/chat/edit`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message_id: msgId, new_text: newText })
+        });
+
+        if (response.ok) {
+            // Screen-la ulla text-ah update pannuvom
+            const textElement = document.querySelector(`#text-${msgId}`);
+            if (textElement) textElement.innerText = newText + " (edited)";
+            alert("Message updated!");
+        }
+    } catch (err) {
+        console.error("Edit failed:", err);
+    }
+}
+
+// --- 2. Document Filter Function ---
+function filterDocuments(senderName) {
+    const chatWindow = document.getElementById('chat-window');
+    const allMsgs = chatWindow.querySelectorAll('.msg');
+    
+    // Oru simple toggle maari: documents illadha messages-ah hide pannuvom
+    allMsgs.forEach(msg => {
+        const hasFile = msg.querySelector('.file-preview-box') || msg.querySelector('.file-attachment');
+        if (!hasFile) {
+            msg.style.display = (msg.style.display === 'none') ? 'flex' : 'none';
+        }
+    });
+    console.log(`Filtering documents for ${senderName}`);
+}
+
+// --- 3. Main UI Function (Updated) ---
 function appendMessageToUI(data) {
     const chatWindow = document.getElementById('chat-window');
     if (!chatWindow) return;
 
-    // Create a unique key to prevent duplicate messages on screen
-    const messageKey = `msg-${data.created_at}-${data.message_text}`;
+    // Unique key with ID if available, else timestamp
+    const msgId = data.id || `temp-${Date.now()}`;
+    const messageKey = `msg-${msgId}`;
     if (document.getElementById(messageKey)) return;
 
     const msgDiv = document.createElement('div');
@@ -63,8 +103,30 @@ function appendMessageToUI(data) {
     const isMe = data.sender_type === 'engineer';
     msgDiv.className = isMe ? 'msg engineer-msg-style' : 'msg executive';
     
-    let content = `<small>${isMe ? 'You' : data.sender}</small><p>${data.message_text || ''}</p>`;
+    // Date and Time calculation
+    const msgTime = data.created_at ? new Date(data.created_at) : new Date();
+    const timeStr = msgTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = msgTime.toLocaleDateString();
+
+    // UI Content
+    let content = `
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 4px;">
+            <small style="font-weight: bold; cursor: pointer; color: #1b4e8c;" onclick="filterDocuments('${data.sender}')">
+                ${isMe ? 'You' : data.sender} 📄
+            </small>
+            <small style="font-size: 0.7rem; color: #666;">${dateStr} | ${timeStr}</small>
+        </div>
+        <p id="text-${msgId}" style="margin: 5px 0;">${data.message_text || ''}</p>
+    `;
+
+    // Add Edit Button only for Engineer's text messages
+    if (isMe && !data.file_info) {
+        content += `<button onclick="editMsg('${msgId}', '${data.message_text}')" 
+                     style="background: none; border: none; font-size: 0.8rem; color: #007bff; cursor: pointer; padding: 0;">
+                     Edit ✎</button>`;
+    }
     
+    // File/Document UI
     if (data.file_info) {
         const file = typeof data.file_info === 'string' ? JSON.parse(data.file_info) : data.file_info;
         if (isMe) {
@@ -85,8 +147,7 @@ function appendMessageToUI(data) {
     msgDiv.innerHTML = content;
     chatWindow.appendChild(msgDiv);
     chatWindow.scrollTop = chatWindow.scrollHeight;
-}
-
+}//...................................................................................................................................>
 // --- 4. MESSAGE SEND LOGIC ---
 async function sendEngineerRequest() {
     const msgArea = document.getElementById('engineer-msg');
