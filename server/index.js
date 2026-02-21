@@ -145,7 +145,19 @@ app.post('/api/engineer/logout', async (req, res) => {
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: "Logout error" }); }
 });
-
+// Message Edit Route.......................................................................................................>
+app.put('/api/chat/edit', async (req, res) => {
+    const { message_id, new_text } = req.body;
+    try {
+        await pool.query(
+            "UPDATE chat_messages SET message_text = $1, is_edited = true WHERE id = $2",
+            [new_text, message_id]
+        );
+        res.json({ success: true, message: "Message updated successfully" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: "No file" });
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
