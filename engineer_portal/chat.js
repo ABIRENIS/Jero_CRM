@@ -194,3 +194,31 @@ async function handleLogout() {
         window.location.href = 'index.html';
     }
 }
+// --- 7. LOGIN LOGIC (MISSING PIECE) ---
+async function loginEngineer(email, password) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/engineer/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.id) {
+            // Save engineer data to localStorage
+            localStorage.setItem('engineerData', JSON.stringify(data));
+            
+            // Redirect to dashboard
+            window.location.href = 'dashboard.html';
+        } else {
+            alert(data.message || "Invalid Email or Password");
+        }
+    } catch (err) {
+        console.error("Login connection error:", err);
+        alert("The server on Render is waking up. Please wait 20 seconds and try again.");
+    }
+}
+
+// Make it globally accessible for index.html
+window.loginEngineer = loginEngineer;
