@@ -9,10 +9,29 @@ const socket = io(API_BASE_URL);
 // Login details retrieval from LocalStorage
 let currentEngineer = JSON.parse(localStorage.getItem('engineerData')) || null;
 
-// --- 1. FETCH HISTORY FROM DATABASE ON LOAD ---
-async function loadChatHistory() {
-    if (!currentEngineer) return;
+// --- 1. INITIALIZATION ---
+document.addEventListener('DOMContentLoaded', () => {
+    if (!currentEngineer) {
+        window.location.href = 'index.html'; // Redirect if not logged in
+        return;
+    }
+    loadChatHistory();
+    registerWithServer(); 
+});
 
+function registerWithServer() {
+    if (currentEngineer && currentEngineer.id) {
+        console.log("Registering status and joining room for:", currentEngineer.id);
+        socket.emit('register_engineer', currentEngineer.id);
+        socket.emit('join_chat', currentEngineer.id);
+    }
+}
+
+socket.on('connect', registerWithServer);
+
+// --- 2. DATABASE OPERATIONS (Fetch, Edit, Delete) ---
+
+async function loadChatHistory() {
     try {
         const response = await fetch(`${API_BASE_URL}/api/chat/${currentEngineer.id}`);
         const history = await response.json();
@@ -31,25 +50,6 @@ async function loadChatHistory() {
     }
 }
 
-// --- 2. REGISTRATION & CONNECTION LOGIC ---
-function registerWithServer() {
-    if (currentEngineer && currentEngineer.id) {
-        console.log("Registering status and joining room for:", currentEngineer.id);
-        socket.emit('register_engineer', currentEngineer.id);
-        socket.emit('join_chat', currentEngineer.id);
-    }
-}
-
-// Page initialization
-document.addEventListener('DOMContentLoaded', () => {
-    loadChatHistory();
-    registerWithServer(); 
-});
-
-socket.on('connect', registerWithServer);
-
-// --- 3. UI HELPER FUNCTION (Standardized for History & Live) ---........................................................................>
-// --- 1. Message Edit Function ---
 async function editMsg(msgId, oldText) {
     const newText = prompt("Edit your message:", oldText);
     if (newText === null || newText.trim() === "" || newText === oldText) return;
@@ -58,43 +58,33 @@ async function editMsg(msgId, oldText) {
         const response = await fetch(`${API_BASE_URL}/api/chat/edit`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message_id: msgId, new_text: newText })
+            body: JSON.stringify({ 
+                message_id: msgId, 
+                new_text: newText,
+                engineer_db_id: currentEngineer.id // For room targeting
+            })
         });
 
-        if (response.ok) {
-            // Screen-la ulla text-ah update pannuvom
-            const textElement = document.querySelector(`#text-${msgId}`);
-            if (textElement) textElement.innerText = newText + " (edited)";
-            alert("Message updated!");
+        const data = await response.json();
+        if (!response.ok) {
+            alert(data.message || "Failed to edit message.");
         }
+        // Note: UI will be updated via socket.on('message_edited')
     } catch (err) {
         console.error("Edit failed:", err);
     }
 }
 
-// --- 2. Document Filter Function ---
-function filterDocuments(senderName) {
-    const chatWindow = document.getElementById('chat-window');
-    const allMsgs = chatWindow.querySelectorAll('.msg');
-    
-    // Oru simple toggle maari: documents illadha messages-ah hide pannuvom
-    allMsgs.forEach(msg => {
-        const hasFile = msg.querySelector('.file-preview-box') || msg.querySelector('.file-attachment');
-        if (!hasFile) {
-            msg.style.display = (msg.style.display === 'none') ? 'flex' : 'none';
-        }
-    });
-    console.log(`Filtering documents for ${senderName}`);
-}
+// --- 3. UI RENDERING ---
 
-// --- 3. Main UI Function (Updated) ---
 function appendMessageToUI(data) {
     const chatWindow = document.getElementById('chat-window');
     if (!chatWindow) return;
 
-    // Unique key with ID if available, else timestamp
     const msgId = data.id || `temp-${Date.now()}`;
     const messageKey = `msg-${msgId}`;
+    
+    // Prevent duplicates
     if (document.getElementById(messageKey)) return;
 
     const msgDiv = document.createElement('div');
@@ -103,30 +93,32 @@ function appendMessageToUI(data) {
     const isMe = data.sender_type === 'engineer';
     msgDiv.className = isMe ? 'msg engineer-msg-style' : 'msg executive';
     
-    // Date and Time calculation
     const msgTime = data.created_at ? new Date(data.created_at) : new Date();
     const timeStr = msgTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dateStr = msgTime.toLocaleDateString();
 
-    // UI Content
     let content = `
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 4px;">
-            <small style="font-weight: bold; cursor: pointer; color: #1b4e8c;" onclick="filterDocuments('${data.sender}')">
-                ${isMe ? 'You' : data.sender} 📄
+            <small style="font-weight: bold; color: #1b4e8c;">
+                ${isMe ? 'You' : data.sender}
             </small>
             <small style="font-size: 0.7rem; color: #666;">${dateStr} | ${timeStr}</small>
         </div>
-        <p id="text-${msgId}" style="margin: 5px 0;">${data.message_text || ''}</p>
+        <p id="text-${msgId}" style="margin: 5px 0;">
+            ${data.message_text || ''} 
+            ${data.is_edited ? '<small style="color:gray; font-style:italic;">(edited)</small>' : ''}
+        </p>
     `;
 
-    // Add Edit Button only for Engineer's text messages
+    // Only show Edit button if it's my text message and NOT a file
     if (isMe && !data.file_info) {
-        content += `<button onclick="editMsg('${msgId}', '${data.message_text}')" 
-                     style="background: none; border: none; font-size: 0.8rem; color: #007bff; cursor: pointer; padding: 0;">
-                     Edit ✎</button>`;
+        content += `
+            <button class="edit-btn" onclick="editMsg('${msgId}', '${data.message_text.replace(/'/g, "\\'")}')" 
+                style="background: none; border: none; font-size: 0.8rem; color: #007bff; cursor: pointer; padding: 0;">
+                Edit ✎
+            </button>`;
     }
     
-    // File/Document UI
     if (data.file_info) {
         const file = typeof data.file_info === 'string' ? JSON.parse(data.file_info) : data.file_info;
         if (isMe) {
@@ -147,8 +139,39 @@ function appendMessageToUI(data) {
     msgDiv.innerHTML = content;
     chatWindow.appendChild(msgDiv);
     chatWindow.scrollTop = chatWindow.scrollHeight;
-}//...................................................................................................................................>
-// --- 4. MESSAGE SEND LOGIC ---
+}
+
+// --- 4. REAL-TIME SOCKET LISTENERS ---
+
+// Listener for NEW messages
+socket.on('receive_message', (data) => {
+    if (String(data.engineer_db_id) === String(currentEngineer.id)) {
+        appendMessageToUI(data);
+        if (data.sender_type === 'admin') {
+            showToastNotification(`New message from Executive`);
+        }
+    }
+});
+
+// Listener for EDITED messages
+socket.on('message_edited', (data) => {
+    if (String(data.engineer_db_id) === String(currentEngineer.id)) {
+        const textElement = document.getElementById(`text-${data.message_id}`);
+        if (textElement) {
+            textElement.innerHTML = `${data.new_text} <small style="color:gray; font-style:italic;">(edited)</small>`;
+            
+            // Update the edit button's onclick attribute with the new text
+            const msgContainer = document.getElementById(`msg-${data.message_id}`);
+            const editBtn = msgContainer.querySelector('.edit-btn');
+            if (editBtn) {
+                editBtn.setAttribute('onclick', `editMsg('${data.message_id}', '${data.new_text.replace(/'/g, "\\'")}')`);
+            }
+        }
+    }
+});
+
+// --- 5. SEND LOGIC ---
+
 async function sendEngineerRequest() {
     const msgArea = document.getElementById('engineer-msg');
     const fileInput = document.getElementById('eng-file-input');
@@ -159,7 +182,6 @@ async function sendEngineerRequest() {
     if ((!message && !file) || !currentEngineer) return;
 
     let uploadedFile = null;
-
     if (file) {
         const formData = new FormData();
         formData.append('file', file);
@@ -171,13 +193,12 @@ async function sendEngineerRequest() {
             uploadedFile = await uploadRes.json(); 
         } catch (err) {
             console.error("Upload failed:", err);
-            alert("File upload failed.");
             return;
         }
     }
 
     const chatData = {
-        sender: currentEngineer.name || 'Engineer',
+        sender: currentEngineer.name,
         sender_type: 'engineer',
         sender_id: currentEngineer.engineer_id,
         engineer_db_id: currentEngineer.id,
@@ -186,27 +207,32 @@ async function sendEngineerRequest() {
         created_at: new Date().toISOString()
     };
 
-    // Emit to server (The server will broadcast this back via 'receive_message')
     socket.emit('send_message', chatData);
 
-    // Clear inputs
     msgArea.value = '';
     if (fileInput) fileInput.value = '';
 }
 
-// --- 5. RECEIVE LOGIC ---
-socket.on('receive_message', (data) => {
-    // SECURITY CHECK: Only show message if it belongs to this engineer
-    if (String(data.engineer_db_id) === String(currentEngineer.id)) {
-        appendMessageToUI(data);
+// --- 6. UTILS & AUTH ---
 
-        if (data.sender_type === 'admin') {
-            showToastNotification(`New message from Executive`);
-        }
+async function handleLogout() {
+    if (!currentEngineer) return;
+    try {
+        await fetch(`${API_BASE_URL}/api/engineer/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ engineer_id: currentEngineer.id })
+        });
+        localStorage.removeItem('engineerData');
+        socket.disconnect();
+        window.location.href = 'index.html';
+    } catch (err) {
+        console.error("Logout error:", err);
+        localStorage.clear();
+        window.location.href = 'index.html';
     }
-});
+}
 
-// --- 6. AUTH & TOOLS ---
 async function downloadFile(url, fileName) {
     try {
         const response = await fetch(url);
@@ -214,11 +240,10 @@ async function downloadFile(url, fileName) {
         const blobURL = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = blobURL;
-        link.setAttribute('download', fileName); 
+        link.download = fileName; 
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobURL); 
     } catch (err) {
         window.open(url, '_blank'); 
     }
@@ -238,51 +263,22 @@ function showToastNotification(text) {
     setTimeout(() => toast.remove(), 2500);
 }
 
-async function handleLogout() {
-    if (!currentEngineer) return;
+// Global exposure for login
+window.loginEngineer = async function(email, password) {
     try {
-        await fetch(`${API_BASE_URL}/api/engineer/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ engineer_id: currentEngineer.id })
-        });
-        localStorage.removeItem('engineerData');
-        socket.disconnect();
-        window.location.href = 'index.html';
-    } catch (err) {
-        console.error("Logout error:", err);
-        localStorage.clear();
-        window.location.href = 'index.html';
-    }
-}
-/**
- * LOGIN LOGIC: Connects to Render/Neon
- */
-async function loginEngineer(email, password) {
-    try {
-        // Use the API_BASE_URL defined at the top of your chat.js
         const response = await fetch(`${API_BASE_URL}/api/engineer/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         });
-
         const data = await response.json();
-
         if (response.ok && data.id) {
-            // 1. Save data for session persistence
             localStorage.setItem('engineerData', JSON.stringify(data));
-            
-            // 2. Redirect to dashboard
             window.location.href = 'dashboard.html';
         } else {
-            alert(data.message || "Invalid Email or Password");
+            alert(data.message || "Invalid Credentials");
         }
     } catch (err) {
-        console.error("Login Error:", err);
-        alert("The server is waking up. Please wait 20 seconds and try again.");
+        alert("Server is connecting... Please try again in a moment.");
     }
-}
-
-// Make the function globally available to index.html
-window.loginEngineer = loginEngineer;
+};
