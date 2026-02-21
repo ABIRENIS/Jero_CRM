@@ -180,3 +180,19 @@ textarea {
     display: block;
     margin-top: 5px;
 }
+
+.edit-btn {
+    margin-left: 10px;
+    opacity: 0.6;
+    transition: 0.3s;
+}
+
+.edit-btn:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+/* Edited tag style */
+small {
+    font-size: 0.75rem;
+}
