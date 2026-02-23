@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
 socket.on('connect', registerWithServer);
 
 // --- 3. UI HELPER FUNCTION (Standardized for History & Live) ---........................................................................>
-// --- 1. Message Edit & Delete Functions ---
+// --- 1. Message Edit Function ---
 async function editMsg(msgId, oldText) {
     const newText = prompt("Edit your message:", oldText);
     if (newText === null || newText.trim() === "" || newText === oldText) return;
@@ -58,28 +58,20 @@ async function editMsg(msgId, oldText) {
         const response = await fetch(`${API_BASE_URL}/api/chat/edit`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message_id: msgId, new_text: newText, engineer_db_id: currentEngineer.id })
+            body: JSON.stringify({ message_id: msgId, new_text: newText })
         });
 
-        if (!response.ok) {
-            const errData = await response.json();
-            alert(errData.message || "Edit failed");
+        if (response.ok) {
+            // Screen-la ulla text-ah update pannuvom
+            const textElement = document.querySelector(`#text-${msgId}`);
+            if (textElement) textElement.innerText = newText + " (edited)";
+            alert("Message updated!");
         }
-    } catch (err) { console.error("Edit failed:", err); }
+    } catch (err) {
+        console.error("Edit failed:", err);
+    }
 }
-//.............................................................................................................................>
-async function deleteMsg(msgId) {
-    if (!confirm("Are you sure you want to delete this?")) return;
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/chat/delete/${msgId}`, {
-            method: 'DELETE'
-        });
-        if (!response.ok) {
-            const errData = await response.json();
-            alert(errData.message || "Delete failed");
-        }
-    } catch (err) { console.error("Delete failed:", err); }
-}
+
 // --- 2. Document Filter Function ---
 function filterDocuments(senderName) {
     const chatWindow = document.getElementById('chat-window');
@@ -95,7 +87,7 @@ function filterDocuments(senderName) {
     console.log(`Filtering documents for ${senderName}`);
 }
 
-// --- 3. Main UI Function (Updated with 5-min Edit/Delete Logic) ------------------------------------------------------------------------->
+// --- 3. Main UI Function (Updated) ---
 function appendMessageToUI(data) {
     const chatWindow = document.getElementById('chat-window');
     if (!chatWindow) return;
@@ -116,10 +108,6 @@ function appendMessageToUI(data) {
     const timeStr = msgTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dateStr = msgTime.toLocaleDateString();
 
-    // 5-minute calculation logic
-    const now = new Date();
-    const diffInMins = (now - msgTime) / 1000 / 60;
-
     // UI Content
     let content = `
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 4px;">
@@ -128,35 +116,14 @@ function appendMessageToUI(data) {
             </small>
             <small style="font-size: 0.7rem; color: #666;">${dateStr} | ${timeStr}</small>
         </div>
-        <p id="text-${msgId}" style="margin: 5px 0;">
-            ${data.message_text || ''} 
-            ${data.is_edited ? '<small style="color:gray; font-style:italic;">(edited)</small>' : ''}
-        </p>
+        <p id="text-${msgId}" style="margin: 5px 0;">${data.message_text || ''}</p>
     `;
 
-    // --- Action Buttons (Edit & Delete within 5 mins) ---
-    if (isMe && diffInMins < 5) {
-        content += `
-            <div id="actions-${msgId}" style="display: flex; gap: 12px; margin-top: 5px;">
-                ${!data.file_info ? `
-                <button onclick="editMsg('${msgId}', '${data.message_text.replace(/'/g, "\\'")}')" 
-                        style="background: none; border: none; font-size: 0.8rem; color: #007bff; cursor: pointer; padding: 0;">
-                        Edit ✎
-                </button>` : ''}
-                
-                <button onclick="deleteMsg('${msgId}')" 
-                        style="background: none; border: none; font-size: 0.8rem; color: #dc3545; cursor: pointer; padding: 0;">
-                        Delete 🗑
-                </button>
-            </div>
-        `;
-
-        // Auto-hide buttons after remaining time
-        const remainingTime = (5 - diffInMins) * 60 * 1000;
-        setTimeout(() => {
-            const actionContainer = document.getElementById(`actions-${msgId}`);
-            if (actionContainer) actionContainer.remove();
-        }, remainingTime);
+    // Add Edit Button only for Engineer's text messages
+    if (isMe && !data.file_info) {
+        content += `<button onclick="editMsg('${msgId}', '${data.message_text}')" 
+                     style="background: none; border: none; font-size: 0.8rem; color: #007bff; cursor: pointer; padding: 0;">
+                     Edit ✎</button>`;
     }
     
     // File/Document UI
@@ -180,7 +147,6 @@ function appendMessageToUI(data) {
     msgDiv.innerHTML = content;
     chatWindow.appendChild(msgDiv);
     chatWindow.scrollTop = chatWindow.scrollHeight;
-}
 }//...................................................................................................................................>
 // --- 4. MESSAGE SEND LOGIC ---
 async function sendEngineerRequest() {
@@ -228,8 +194,7 @@ async function sendEngineerRequest() {
     if (fileInput) fileInput.value = '';
 }
 
-// --- 5. RECEIVE LOGIC ----------------------------------------------------------------------------------------------------------->
-// --- 5. RECEIVE LOGIC (Updated for Real-time Sync) ---
+// --- 5. RECEIVE LOGIC ---
 socket.on('receive_message', (data) => {
     // SECURITY CHECK: Only show message if it belongs to this engineer
     if (String(data.engineer_db_id) === String(currentEngineer.id)) {
@@ -241,32 +206,6 @@ socket.on('receive_message', (data) => {
     }
 });
 
-// Real-time Edit Update: Vera yaravathu (Executive) edit panna live-ah update aaga
-socket.on('message_edited', (data) => {
-    if (String(data.engineer_db_id) === String(currentEngineer.id)) {
-        const textElement = document.getElementById(`text-${data.message_id}`);
-        if (textElement) {
-            textElement.innerHTML = `${data.new_text} <small style="color:gray; font-style:italic;">(edited)</small>`;
-            
-            // Update the edit button's attribute so the next edit uses the new text
-            const actionsContainer = document.getElementById(`actions-${data.message_id}`);
-            const editBtn = actionsContainer ? actionsContainer.querySelector('button') : null;
-            if (editBtn && editBtn.innerText.includes('Edit')) {
-                editBtn.setAttribute('onclick', `editMsg('${data.message_id}', '${data.new_text.replace(/'/g, "\\'")}')`);
-            }
-        }
-    }
-});
-
-// Real-time Delete Update: Message delete aanavudane screen-la irunthu thookiduvom
-socket.on('message_deleted', (data) => {
-    const msgElement = document.getElementById(`msg-${data.message_id}`);
-    if (msgElement) {
-        msgElement.style.transition = "opacity 0.3s ease";
-        msgElement.style.opacity = '0';
-        setTimeout(() => msgElement.remove(), 300);
-    }
-});//----------------------------------------------------------------------------------------------------------------------------------->
 // --- 6. AUTH & TOOLS ---
 async function downloadFile(url, fileName) {
     try {
