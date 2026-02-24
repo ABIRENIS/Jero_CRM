@@ -148,7 +148,7 @@ function appendMessageToUI(data) {
     chatWindow.appendChild(msgDiv);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }//...................................................................................................................................>
-// --- 4. MESSAGE SEND LOGIC ---
+// --- 4. MESSAGE SEND LOGIC (Optimized for Instant Display) ---
 async function sendEngineerRequest() {
     const msgArea = document.getElementById('engineer-msg');
     const fileInput = document.getElementById('eng-file-input');
@@ -186,12 +186,19 @@ async function sendEngineerRequest() {
         created_at: new Date().toISOString()
     };
 
-    // Emit to server (The server will broadcast this back via 'receive_message')
+    // 1. Emit to server (To send it to the Executive)
     socket.emit('send_message', chatData);
 
-    // Clear inputs
+    // 2. 🔥 THE FIX: Immediately show it on your own screen
+    // Refresh pannaama screen-la vara intha line dhaan mukhkiyamaana logic
+    appendMessageToUI(chatData);
+
+    // Clear inputs and scroll to bottom
     msgArea.value = '';
     if (fileInput) fileInput.value = '';
+    
+    const chatWindow = document.getElementById('chat-window');
+    if(chatWindow) chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
 // --- 5. RECEIVE LOGIC ---
