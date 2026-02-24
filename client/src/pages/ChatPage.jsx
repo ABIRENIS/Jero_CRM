@@ -52,8 +52,6 @@ const ChatPage = ({ socket, clearUnread }) => {
 
       if (incomingId === activeId) {
         setChatHistory((prev) => {
-          // STRICT DUPLICATE CHECK
-          // We check if the message text AND created_at are exactly the same
           const isDuplicate = prev.some(msg => 
             msg.message_text === data.message_text && 
             msg.created_at === data.created_at
