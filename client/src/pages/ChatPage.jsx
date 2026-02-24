@@ -134,8 +134,12 @@ const ChatPage = ({ socket, clearUnread }) => {
         created_at: new Date().toISOString()
       };
 
-      // Server broadcasts this back, so it will appear via handleReceiveMessage
+      // 1. Emit to server (other users receive this)
       socket.emit("send_message", messageData);
+      
+      // 2. 🔥 ADD THIS LINE: Update local chat history immediately
+      // Idhu dhaan refresh pannaama message-ah unga screen-la kaatum
+      setChatHistory((prev) => [...prev, messageData]);
       
       setMessage("");
       setSelectedFile(null);
