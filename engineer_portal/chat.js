@@ -92,10 +92,17 @@ function appendMessageToUI(data) {
     const chatWindow = document.getElementById('chat-window');
     if (!chatWindow) return;
 
-    // Unique key with ID if available, else timestamp
-    const msgId = data.id || `temp-${Date.now()}`;
+    // --- STEP 1: UNIQUE KEY LOGIC ---
+    // Database ID irundha adhai use pannu, illana timestamp + message text vechu unique key pannu
+    // Idhu dhaan duplicate-ah thadukkum
+    const msgId = data.id || `temp-${new Date(data.created_at).getTime()}-${data.message_text.substring(0,5)}`;
     const messageKey = `msg-${msgId}`;
-    if (document.getElementById(messageKey)) return;
+    
+    // Check if this message is already on the screen
+    if (document.getElementById(messageKey)) {
+        console.log("Message already exists, skipping append.");
+        return;
+    }
 
     const msgDiv = document.createElement('div');
     msgDiv.id = messageKey;
@@ -118,7 +125,7 @@ function appendMessageToUI(data) {
         </div>
         <p id="text-${msgId}" style="margin: 5px 0;">${data.message_text || ''}</p>
     `;
-
+    
     // Add Edit Button only for Engineer's text messages
     if (isMe && !data.file_info) {
         content += `<button onclick="editMsg('${msgId}', '${data.message_text}')" 
