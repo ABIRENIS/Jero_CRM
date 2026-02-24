@@ -43,33 +43,34 @@ const ChatPage = ({ socket, clearUnread }) => {
   }, [engineer, socket, API_BASE_URL]);
 
   // 3. Socket Listener (The "Filter" logic)
-  useEffect(() => {
-    if (!socket) return;
+useEffect(() => {
+  if (!socket) return;
 
-    const handleReceiveMessage = (data) => {
-      // CRITICAL: Check if incoming message belongs to the open chat
-      const incomingId = String(data.engineer_db_id);
-      const activeId = String(engineerIdRef.current);
+  const handleReceiveMessage = (data) => {
+    const incomingId = String(data.engineer_db_id);
+    const activeId = String(engineerIdRef.current);
 
-      if (incomingId === activeId) {
-        setChatHistory((prev) => {
-          // Prevent UI duplicates
-          const isDuplicate = prev.some(msg => 
-            msg.created_at === data.created_at && msg.message_text === data.message_text
-          );
-          if (isDuplicate) return prev;
-          return [...prev, data];
-        });
-        
-        // Auto-clear unread if the chat is open
-        if (clearUnread) clearUnread(incomingId);
-      }
-    };
+    if (incomingId === activeId) {
+      setChatHistory((prev) => {
+        // IMPORTANT: Server message logic update
+        // Message unga kitta irundhu send aagi server vazhiya thirumba vandha, 
+        // adhai prevent panna innum konjam strict logic venum.
+        const isDuplicate = prev.some(msg => 
+          msg.created_at === data.created_at || 
+          (msg.message_text === data.message_text && Math.abs(new Date(msg.created_at) - new Date(data.created_at)) < 1000)
+        );
 
-    socket.on("receive_message", handleReceiveMessage);
-    return () => socket.off("receive_message", handleReceiveMessage);
-  }, [socket, clearUnread]);
+        if (isDuplicate) return prev;
+        return [...prev, data];
+      });
+      
+      if (clearUnread) clearUnread(incomingId);
+    }
+  };
 
+  socket.on("receive_message", handleReceiveMessage);
+  return () => socket.off("receive_message", handleReceiveMessage);
+}, [socket, clearUnread]);
   // 4. Auto-Scroll
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
