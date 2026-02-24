@@ -43,34 +43,43 @@ const ChatPage = ({ socket, clearUnread }) => {
   }, [engineer, socket, API_BASE_URL]);
 
   // 3. Socket Listener (The "Filter" logic)
-useEffect(() => {
-  if (!socket) return;
+  useEffect(() => {
+    if (!socket) return;
 
-  const handleReceiveMessage = (data) => {
-    const incomingId = String(data.engineer_db_id);
-    const activeId = String(engineerIdRef.current);
+    const handleReceiveMessage = (data) => {
+      const incomingId = String(data.engineer_db_id);
+      const activeId = String(engineerIdRef.current);
 
-    if (incomingId === activeId) {
-      setChatHistory((prev) => {
-        // IMPORTANT: Server message logic update
-        // Message unga kitta irundhu send aagi server vazhiya thirumba vandha, 
-        // adhai prevent panna innum konjam strict logic venum.
-        const isDuplicate = prev.some(msg => 
-          msg.created_at === data.created_at || 
-          (msg.message_text === data.message_text && Math.abs(new Date(msg.created_at) - new Date(data.created_at)) < 1000)
-        );
+      if (incomingId === activeId) {
+        setChatHistory((prev) => {
+          // STRICT DUPLICATE CHECK
+          // We check if the message text AND created_at are exactly the same
+          const isDuplicate = prev.some(msg => 
+            msg.message_text === data.message_text && 
+            msg.created_at === data.created_at
+          );
 
-        if (isDuplicate) return prev;
-        return [...prev, data];
-      });
-      
-      if (clearUnread) clearUnread(incomingId);
-    }
-  };
+          if (isDuplicate) {
+            console.log("Duplicate Message Blocked Successfully!");
+            return prev; // Returns existing state without adding the duplicate
+          }
 
-  socket.on("receive_message", handleReceiveMessage);
-  return () => socket.off("receive_message", handleReceiveMessage);
-}, [socket, clearUnread]);
+          return [...prev, data];
+        });
+        
+        // Auto-clear unread if the chat is open
+        if (clearUnread) clearUnread(incomingId);
+      }
+    };
+
+    // Clean up previous listeners before adding a new one
+    socket.off("receive_message", handleReceiveMessage);
+    socket.on("receive_message", handleReceiveMessage);
+
+    return () => {
+      socket.off("receive_message", handleReceiveMessage);
+    };
+  }, [socket, clearUnread]);
   // 4. Auto-Scroll
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
