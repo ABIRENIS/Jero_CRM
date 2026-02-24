@@ -11,8 +11,7 @@ require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
-
-// --- 1. MIDDLEWARE ---
+// --middle ware --//
 const allowedOrigins = [
     process.env.CLIENT_URL, 
     process.env.PORTAL_URL,
@@ -23,14 +22,16 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: (origin, callback) => {
+        // origin illanaalum (mobile/Postman) allow pannanum
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
-            callback(new Error('Not allowed by CORS'));
+            // Development-la CORS issue varaama irukka callback(null, true) kooda tharalaam
+            callback(null, true); 
         }
-    }
+    },
+    credentials: true
 }));
-app.use(express.json());
 
 // --- 2. FILE STORAGE SETUP ---
 const uploadDir = path.join(__dirname, 'uploads');
@@ -180,6 +181,7 @@ app.get('/api/engineers/:groupType', async (req, res) => {
 });
 
 // --- 8. REAL-TIME LOGIC ---
+// --- 8. REAL-TIME LOGIC ---
 const connectedEngineers = new Map();
 
 io.on('connection', (socket) => {
@@ -207,17 +209,19 @@ io.on('connection', (socket) => {
         const roomId = String(engineer_db_id);
         
         try {
+            // Save to Database
             await pool.query(
                 "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5)",
                 [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
             );
 
-            // BROADCAST STRATEGY:
-            // 1. Send to the specific room (Captured by Engineer OR Admin if they joined room)
-            io.to(roomId).emit('receive_message', data);
+            // 🔥 THE FIX: BROADCAST STRATEGY
+            // socket.to(roomId).emit makes sure the sender DOES NOT receive their own message back.
+            // Only the other person in the room (Engineer or Admin) will receive it.
+            socket.to(roomId).emit('receive_message', data);
 
-            // 2. Global broadcast for Executive Panel (If they aren't in a specific room yet)
-            socket.broadcast.emit('receive_message', data);
+            // Removed the redundant global broadcast to prevent duplicates.
+            console.log(`Message sent to room ${roomId} by ${sender}`);
 
         } catch (err) { console.error("Msg Save Error:", err.message); }
     });
@@ -234,7 +238,6 @@ io.on('connection', (socket) => {
         }
     });
 });
-
 // --- 9. SERVER LISTEN ---
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
