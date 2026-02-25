@@ -11,7 +11,12 @@ require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
-// --middle ware --//
+
+// --- 1. CRITICAL MIDDLEWARE ---
+// This parses incoming JSON requests. Without this, req.body is undefined (Error 500).
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true }));
+
 const allowedOrigins = [
     process.env.CLIENT_URL, 
     process.env.PORTAL_URL,
@@ -22,11 +27,12 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: (origin, callback) => {
-        // origin illanaalum (mobile/Postman) allow pannanum
+        // Allow requests with no origin (like mobile apps or curl) or if in allowed list
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
-            // Development-la CORS issue varaama irukka callback(null, true) kooda tharalaam
+            // During development, you can change this to callback(null, true) 
+            // if you face issues with new Vercel preview links
             callback(null, true); 
         }
     },
@@ -56,7 +62,7 @@ const io = new Server(server, {
     }
 });
 
-// --- 4. ROOT ROUTE ---
+// --- 4. ROOT ROUTE (Health Check) ---
 app.get('/', (req, res) => {
     res.json({ status: "Live", message: "Jerobyte CRM Server is running.", timestamp: new Date() });
 });
@@ -86,7 +92,7 @@ const broadcastStats = async () => {
     }
 };
 
-// --- 6. CRON JOB ---
+// --- 6. CRON JOB (30 Day Cleanup) ---
 cron.schedule('0 0 * * *', async () => {
     try {
         await pool.query("DELETE FROM chat_messages WHERE created_at < NOW() - INTERVAL '30 days'");
@@ -120,12 +126,19 @@ app.post('/api/engineers/add', async (req, res) => {
 app.post('/api/engineer/login', async (req, res) => {
     const { email, password } = req.body;
     try {
+        // Input validation to avoid crash before query
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: "Email and password are required" });
+        }
+
         const result = await pool.query("SELECT * FROM engineers WHERE email = $1 AND password = $2", [email, password]);
+        
         if (result.rows.length > 0) {
             const eng = result.rows[0];
             await pool.query("UPDATE engineers SET status = 'Online' WHERE id = $1", [eng.id]);
             broadcastStats();
             io.emit('status_changed', { id: eng.id, status: 'Online' });
+            
             res.json({ 
                 success: true, 
                 id: eng.id, 
@@ -133,8 +146,13 @@ app.post('/api/engineer/login', async (req, res) => {
                 engineer_id: eng.engineer_id,
                 email: eng.email 
             });
-        } else { res.status(401).json({ success: false, message: "Invalid Credentials" }); }
-    } catch (err) { res.status(500).json({ error: "Login error" }); }
+        } else { 
+            res.status(401).json({ success: false, message: "Invalid Credentials" }); 
+        }
+    } catch (err) { 
+        console.error("Login Route Error:", err.message);
+        res.status(500).json({ error: "Login error server-side" }); 
+    }
 });
 
 app.post('/api/engineer/logout', async (req, res) => {
@@ -149,7 +167,9 @@ app.post('/api/engineer/logout', async (req, res) => {
 
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: "No file" });
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    // Use https strictly for production or dynamically detect
+    const protocol = req.get('host').includes('localhost') ? 'http' : 'https';
+    const fileUrl = `${protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     res.json({ url: fileUrl, name: req.file.originalname, type: req.file.mimetype });
 });
 
@@ -181,7 +201,6 @@ app.get('/api/engineers/:groupType', async (req, res) => {
 });
 
 // --- 8. REAL-TIME LOGIC ---
-// --- 8. REAL-TIME LOGIC ---
 const connectedEngineers = new Map();
 
 io.on('connection', (socket) => {
@@ -209,18 +228,12 @@ io.on('connection', (socket) => {
         const roomId = String(engineer_db_id);
         
         try {
-            // Save to Database
             await pool.query(
                 "INSERT INTO chat_messages (engineer_db_id, sender, sender_type, message_text, file_info) VALUES ($1, $2, $3, $4, $5)",
                 [engineer_db_id, sender, sender_type, message_text, file_info ? JSON.stringify(file_info) : null]
             );
 
-            // 🔥 THE FIX: BROADCAST STRATEGY
-            // socket.to(roomId).emit makes sure the sender DOES NOT receive their own message back.
-            // Only the other person in the room (Engineer or Admin) will receive it.
             socket.to(roomId).emit('receive_message', data);
-
-            // Removed the redundant global broadcast to prevent duplicates.
             console.log(`Message sent to room ${roomId} by ${sender}`);
 
         } catch (err) { console.error("Msg Save Error:", err.message); }
@@ -238,8 +251,10 @@ io.on('connection', (socket) => {
         }
     });
 });
+
 // --- 9. SERVER LISTEN ---
+// Render requires binding to 0.0.0.0 and using process.env.PORT
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server on port ${PORT}`);
+    console.log(`🚀 Server fully operational on port ${PORT}`);
 });
